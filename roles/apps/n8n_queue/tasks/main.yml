@@ -158,6 +158,14 @@
       until: n8n_health_check.status == 200
 
   rescue:
+    - name: Read rendered n8n Docker Compose file after failure
+      ansible.builtin.command:
+        cmd: cat docker-compose.yml
+        chdir: "{{ n8n_project_dir }}"
+      register: n8n_rendered_compose
+      changed_when: false
+      failed_when: false
+
     - name: Collect n8n compose status after failure
       ansible.builtin.command:
         cmd: docker compose ps
@@ -185,6 +193,8 @@
     - name: Show n8n diagnostics
       ansible.builtin.debug:
         msg:
+          - "rendered docker-compose.yml:"
+          - "{{ n8n_rendered_compose.stdout_lines | default([]) }}"
           - "docker compose ps:"
           - "{{ n8n_compose_ps.stdout_lines | default([]) }}"
           - "n8n logs:"
