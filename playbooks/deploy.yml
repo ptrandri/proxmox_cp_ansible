@@ -1,6 +1,6 @@
 ---
 - name: Deploy selected application
-  hosts: "{{ target_hosts | default('app_servers') }}"
+  hosts: "{{ target_hosts | default('all') }}"
   become: true
   gather_facts: true
 

@@ -55,10 +55,6 @@ services:
     volumes:
       - n8n-data:/home/node/.n8n
       - ./local-files:/files
-    extra_hosts:
-      - api.abuseipdb.com=104.26.13.38
-      - api.ipdata.co=13.228.190.110
-      - api.ipinfo.io=34.117.59.81
     depends_on:
       postgresql:
         condition: service_healthy
@@ -75,11 +71,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: 50m
-        max-file: "5"
 
   n8n-worker:
     image: "{{ n8n_image }}"
@@ -113,10 +104,6 @@ services:
     volumes:
       - n8n-data:/home/node/.n8n
       - ./local-files:/files
-    extra_hosts:
-      - api.abuseipdb.com=104.26.13.38
-      - api.ipdata.co=13.228.190.110
-      - api.ipinfo.io=34.117.59.81
     depends_on:
       n8n:
         condition: service_healthy
@@ -124,22 +111,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - wget -qO- http://127.0.0.1:5678/healthz/readiness || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: 50m
-        max-file: "5"
 
   postgresql:
     container_name: n8n_db
@@ -162,11 +136,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
 
   redis:
     container_name: n8n_redis
@@ -199,11 +168,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
 
 volumes:
   n8n-data:

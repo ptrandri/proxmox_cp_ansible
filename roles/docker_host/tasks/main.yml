@@ -3,13 +3,13 @@
   ansible.builtin.assert:
     that:
       - ansible_os_family == 'Debian'
-    fail_msg: "This role currently supports Debian/Ubuntu targets. Add OS-specific Docker install tasks for {{ ansible_os_family }}."
+    fail_msg: "This role currently supports Debian/Ubuntu targets."
 
 - name: Validate supported CPU architecture for Docker Compose plugin
   ansible.builtin.assert:
     that:
       - ansible_architecture | lower in docker_compose_arch_map
-    fail_msg: "Unsupported architecture: {{ ansible_architecture }}. Update docker_compose_arch_map."
+    fail_msg: "Unsupported architecture: {{ ansible_architecture }}."
 
 - name: Install Docker prerequisites
   ansible.builtin.apt:

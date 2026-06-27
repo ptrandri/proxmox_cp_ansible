@@ -77,9 +77,6 @@ all:
           ansible_host: $(ConvertTo-YamlDoubleQuoted $VmIp)
           ansible_user: $(ConvertTo-YamlDoubleQuoted $VmUser)
 $authLines
-    n8n_servers:
-      children:
-        app_servers:
 "@
 
 $vars = @"
@@ -99,3 +96,4 @@ Set-Content -Path (Join-Path $inventoryDir "hosts.yml") -Value $inventory -Encod
 Set-Content -Path (Join-Path $varsDir "n8n.yml") -Value $vars -Encoding UTF8
 
 Write-Host "Generated inventories/production/hosts.yml and vars/n8n.yml"
+

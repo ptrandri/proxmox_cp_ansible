@@ -93,3 +93,4 @@
     project_src: "{{ n8n_project_dir }}"
     state: present
     pull: always
+
