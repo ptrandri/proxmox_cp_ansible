@@ -12,6 +12,7 @@ The shared flow is:
 ## Structure
 
 - `playbooks/deploy.yml`: generic Semaphore entrypoint for all apps.
+- `playbooks/deploy_dynamic.yml`: generic entrypoint when `vm_ip` comes from a Semaphore survey/webhook.
 - `playbooks/deploy_n8n.yml`: backward-compatible n8n-only wrapper.
 - `roles/docker_host`: shared Docker host setup.
 - `roles/apps/n8n_queue`: n8n queue-mode deployment.
@@ -89,6 +90,56 @@ Create an Ansible Playbook template in Semaphore with:
 - Survey/Extra Variables: the generic fields above plus app-specific secrets.
 
 `playbooks/deploy.yml` targets `hosts: all` by default, which works well when the Semaphore inventory contains only the VM for this deployment. If one inventory contains multiple hosts, pass `target_hosts` or use Semaphore's Ansible limit option.
+
+## Dynamic VM IP From Semaphore
+
+If `vm_ip` is dynamic, use `playbooks/deploy_dynamic.yml`.
+
+In Semaphore, create a simple localhost inventory:
+
+```yaml
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+```
+
+Then create a task template with:
+
+- Playbook path: `playbooks/deploy_dynamic.yml`
+- Inventory: the localhost inventory above
+- Survey/Webhook fields:
+  - `vm_ip`
+  - `vm_user`
+  - `vm_port` if SSH is not on port 22
+  - `vm_password` or `vm_ssh_private_key_file`
+  - `vm_become_password` if sudo password is different
+  - `app_name`
+  - `domain`
+  - `timezone`
+  - app-specific variables
+
+If these are Semaphore survey fields, Semaphore passes them to Ansible automatically. Do not create self-referencing extra vars like `vm_ip: "{{ vm_ip }}"` unless your Semaphore webhook template explicitly renders placeholders before Ansible runs.
+
+For n8n, the resulting variables should be equivalent to:
+
+```yaml
+app_name: "n8n_queue"
+vm_ip: "1.2.3.4"
+vm_user: "root"
+vm_password: "ssh-password"
+vm_become_password: "sudo-password"
+
+domain: "n8n.example.com"
+timezone: "Asia/Singapore"
+app_admin_username: "owner@example.com"
+app_admin_password: "n8n-owner-password"
+n8n_postgres_password: "postgres-password"
+n8n_redis_password: "redis-password"
+n8n_encryption_key: "long-random-encryption-key"
+```
+
+Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
 
 ## Deploy n8n Queue Mode
 
