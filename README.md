@@ -112,7 +112,7 @@ Then create a task template with:
   - `vm_ip`
   - `vm_user`
   - `vm_port` if SSH is not on port 22
-  - `vm_password` or `vm_ssh_private_key_file`
+  - `vm_password`, `vm_ssh_private_key`, or `vm_ssh_private_key_file`
   - `vm_become_password` if sudo password is different
   - `app_name`
   - `domain`
@@ -140,6 +140,23 @@ n8n_encryption_key: "long-random-encryption-key"
 ```
 
 Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
+
+For SSH key authentication from a dynamic Semaphore field, add a sensitive textarea field named:
+
+```yaml
+vm_ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  ...
+  -----END OPENSSH PRIVATE KEY-----
+```
+
+The matching public key must already exist on the VM in the target user's `~/.ssh/authorized_keys`. For example, if `vm_user` is `root`, the public key must be in `/root/.ssh/authorized_keys`. A public key by itself cannot be used by Ansible to log in; Ansible needs the private key or a password.
+
+If Semaphore stores the private key as a file on the runner instead, pass:
+
+```yaml
+vm_ssh_private_key_file: "/path/to/private_key"
+```
 
 If `vm_user` is `root`, the dynamic playbook disables sudo automatically because many minimal VM images do not include `sudo`. For non-root users, it uses sudo by default. You can override this with:
 

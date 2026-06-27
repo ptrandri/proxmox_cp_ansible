@@ -13,9 +13,30 @@
         that:
           - vm_user is defined
           - vm_user | string | trim | length > 0
-          - vm_password is defined or vm_ssh_private_key_file is defined
-        fail_msg: "When vm_ip is provided, also set vm_user and either vm_password or vm_ssh_private_key_file."
+          - vm_password is defined or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined
+        fail_msg: "When vm_ip is provided, also set vm_user and one of: vm_password, vm_ssh_private_key_file, or vm_ssh_private_key."
       when: vm_ip is defined and (vm_ip | string | trim | length > 0)
+
+    - name: Create temporary SSH private key file from dynamic input
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .pem
+      register: dynamic_ssh_private_key_file
+      when:
+        - vm_ip is defined and (vm_ip | string | trim | length > 0)
+        - vm_ssh_private_key is defined
+        - vm_ssh_private_key | string | trim | length > 0
+      no_log: true
+
+    - name: Write dynamic SSH private key
+      ansible.builtin.copy:
+        content: "{{ (vm_ssh_private_key | string | replace('\\r\\n', '\n') | replace('\\n', '\n')) ~ '\n' }}"
+        dest: "{{ dynamic_ssh_private_key_file.path }}"
+        mode: "0600"
+      when:
+        - dynamic_ssh_private_key_file is defined
+        - dynamic_ssh_private_key_file.path is defined
+      no_log: true
 
     - name: Add VM from dynamic input
       ansible.builtin.add_host:
@@ -27,8 +48,8 @@
         ansible_connection: ssh
         ansible_password: "{{ vm_password | default(omit) }}"
         ansible_become_password: "{{ vm_become_password | default(vm_password | default(omit)) }}"
-        ansible_ssh_private_key_file: "{{ vm_ssh_private_key_file | default(omit) }}"
-        ansible_ssh_common_args: "{{ vm_ssh_common_args | default('-o StrictHostKeyChecking=no') }}"
+        ansible_ssh_private_key_file: "{{ dynamic_ssh_private_key_file.path | default(vm_ssh_private_key_file | default(omit)) }}"
+        ansible_ssh_common_args: "{{ vm_ssh_common_args | default('-o StrictHostKeyChecking=no -o IdentitiesOnly=yes') }}"
         deploy_become: "{{ vm_become | default((vm_user | string | trim) != 'root') }}"
       when: vm_ip is defined and (vm_ip | string | trim | length > 0)
       no_log: true
