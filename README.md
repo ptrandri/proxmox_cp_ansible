@@ -134,10 +134,9 @@ domain: "n8n.example.com"
 timezone: "Asia/Singapore"
 app_admin_username: "owner@example.com"
 app_admin_password: "n8n-owner-password"
-n8n_postgres_password: "postgres-password"
-n8n_redis_password: "redis-password"
-n8n_encryption_key: "long-random-encryption-key"
 ```
+
+The n8n role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key` automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env` on redeploy.
 
 Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
 
@@ -208,7 +207,15 @@ domain: "n8n.example.com"
 timezone: "Asia/Singapore"
 app_admin_username: "owner@example.com"
 app_admin_password: "strong-n8n-owner-password"
+```
 
+Default public port is `5178`, mapped to container port `5678`.
+
+Optional overrides:
+
+```yaml
+n8n_public_port: 5178
+n8n_postgres_user: "n8n"
 n8n_postgres_password: "strong-postgres-password"
 n8n_redis_password: "strong-redis-password"
 n8n_encryption_key: "long-random-encryption-key"
@@ -230,37 +237,9 @@ domain: "{{ domain }}"
 timezone: "{{ timezone }}"
 app_admin_username: "{{ app_admin_username }}"
 app_admin_password: "{{ app_admin_password }}"
-n8n_postgres_password: "{{ n8n_postgres_password }}"
-n8n_redis_password: "{{ n8n_redis_password }}"
-n8n_encryption_key: "{{ n8n_encryption_key }}"
 ```
 
 If `domain` is `n8n.example.com`, the role uses `https://n8n.example.com`. If HTTP is required, pass `http://n8n.example.com`.
-
-## Local Helper
-
-PowerShell helper for generating local inventory and vars:
-
-```powershell
-.\scripts\prepare-deploy-inputs.ps1 `
-  -AppName "n8n_queue" `
-  -VmIp "1.2.3.4" `
-  -VmUser "root" `
-  -SshPassword "ssh-password" `
-  -DomainName "n8n.example.com" `
-  -Timezone "Asia/Singapore" `
-  -AdminUsername "owner@example.com" `
-  -AdminPassword "n8n-owner-password" `
-  -PostgresPassword "postgres-password" `
-  -RedisPassword "redis-password" `
-  -EncryptionKey "long-random-encryption-key"
-```
-
-Then run:
-
-```powershell
-ansible-playbook playbooks/deploy.yml -e "@vars/n8n.yml"
-```
 
 ## Adding Another App
 

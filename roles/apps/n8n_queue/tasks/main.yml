@@ -29,18 +29,68 @@
     n8n_protocol_effective: "{{ 'https' if (n8n_service_url_effective is match('^https://')) else 'http' }}"
     n8n_secure_cookie_effective: "{{ n8n_secure_cookie | default(n8n_service_url_effective is match('^https://')) }}"
 
+- name: Check existing n8n environment file
+  ansible.builtin.stat:
+    path: "{{ n8n_project_dir }}/.env"
+  register: n8n_env_file
+  no_log: true
+
+- name: Read existing n8n environment file
+  ansible.builtin.slurp:
+    path: "{{ n8n_project_dir }}/.env"
+  register: n8n_existing_env
+  when: n8n_env_file.stat.exists
+  no_log: true
+
+- name: Extract existing generated n8n secrets
+  ansible.builtin.set_fact:
+    n8n_existing_postgres_user: "{{ (n8n_existing_env.content | b64decode | regex_search('(?m)^SERVICE_USER_POSTGRES=.*$') | default('', true) | regex_replace('^SERVICE_USER_POSTGRES=', '') | regex_replace('^\"|\"$', '') | replace('$$', '$')) }}"
+    n8n_existing_postgres_password: "{{ (n8n_existing_env.content | b64decode | regex_search('(?m)^SERVICE_PASSWORD_POSTGRES=.*$') | default('', true) | regex_replace('^SERVICE_PASSWORD_POSTGRES=', '') | regex_replace('^\"|\"$', '') | replace('$$', '$')) }}"
+    n8n_existing_redis_password: "{{ (n8n_existing_env.content | b64decode | regex_search('(?m)^SERVICE_PASSWORD_REDIS=.*$') | default('', true) | regex_replace('^SERVICE_PASSWORD_REDIS=', '') | regex_replace('^\"|\"$', '') | replace('$$', '$')) }}"
+    n8n_existing_encryption_key: "{{ (n8n_existing_env.content | b64decode | regex_search('(?m)^SERVICE_PASSWORD_ENCRYPTION=.*$') | default('', true) | regex_replace('^SERVICE_PASSWORD_ENCRYPTION=', '') | regex_replace('^\"|\"$', '') | replace('$$', '$')) }}"
+  when: n8n_existing_env is defined and n8n_existing_env.content is defined
+  no_log: true
+
+- name: Generate missing n8n service secrets
+  ansible.builtin.set_fact:
+    n8n_generated_postgres_user: "n8n_{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_lowercase', 'digits'], length=10) }}"
+    n8n_generated_postgres_password: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}"
+    n8n_generated_redis_password: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}"
+    n8n_generated_encryption_key: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=48) }}"
+  no_log: true
+
+- name: Normalize supplied n8n service secret inputs
+  ansible.builtin.set_fact:
+    n8n_postgres_user_input: "{{ n8n_postgres_user | default('') }}"
+    n8n_postgres_password_input: "{{ '' if (n8n_postgres_password | default('')) == 'CHANGE_ME_POSTGRES_PASSWORD' else (n8n_postgres_password | default('')) }}"
+    n8n_redis_password_input: "{{ '' if (n8n_redis_password | default('')) == 'CHANGE_ME_REDIS_PASSWORD' else (n8n_redis_password | default('')) }}"
+    n8n_encryption_key_input: "{{ '' if (n8n_encryption_key | default('')) == 'CHANGE_ME_LONG_RANDOM_ENCRYPTION_KEY' else (n8n_encryption_key | default('')) }}"
+  no_log: true
+
+- name: Normalize n8n service secrets
+  ansible.builtin.set_fact:
+    n8n_postgres_user_effective: "{{ n8n_postgres_user_input | default(n8n_existing_postgres_user | default(''), true) | default(n8n_generated_postgres_user, true) }}"
+    n8n_postgres_password_effective: "{{ n8n_postgres_password_input | default(n8n_existing_postgres_password | default(''), true) | default(n8n_generated_postgres_password, true) }}"
+    n8n_redis_password_effective: "{{ n8n_redis_password_input | default(n8n_existing_redis_password | default(''), true) | default(n8n_generated_redis_password, true) }}"
+    n8n_encryption_key_effective: "{{ n8n_encryption_key_input | default(n8n_existing_encryption_key | default(''), true) | default(n8n_generated_encryption_key, true) }}"
+  no_log: true
+
 - name: Validate required n8n variables
   ansible.builtin.assert:
     that:
-      - n8n_postgres_password is defined and n8n_postgres_password != 'CHANGE_ME_POSTGRES_PASSWORD'
-      - n8n_redis_password is defined and n8n_redis_password != 'CHANGE_ME_REDIS_PASSWORD'
-      - n8n_encryption_key is defined and n8n_encryption_key != 'CHANGE_ME_LONG_RANDOM_ENCRYPTION_KEY'
+      - n8n_postgres_user_effective is defined and n8n_postgres_user_effective | length > 0
+      - n8n_postgres_password_effective is defined and n8n_postgres_password_effective | length > 0
+      - n8n_redis_password_effective is defined and n8n_redis_password_effective | length > 0
+      - n8n_encryption_key_effective is defined and n8n_encryption_key_effective | length > 0
+      - n8n_postgres_password_effective != 'CHANGE_ME_POSTGRES_PASSWORD'
+      - n8n_redis_password_effective != 'CHANGE_ME_REDIS_PASSWORD'
+      - n8n_encryption_key_effective != 'CHANGE_ME_LONG_RANDOM_ENCRYPTION_KEY'
       - n8n_domain_input | length > 0 or n8n_service_url is defined
       - n8n_owner_email | length > 0
       - n8n_timezone_effective | length > 0
       - (n8n_password_hash | default('') | string | length > 0) or (n8n_password | default(app_admin_password | default('')) | string | length > 0)
       - (n8n_password_hash | default('') | string | length > 0) or ((n8n_password | default(app_admin_password | default(''))) != 'CHANGE_ME_N8N_OWNER_PASSWORD')
-    fail_msg: "For app_name=n8n_queue, set domain, timezone, app_admin_username, app_admin_password, n8n_postgres_password, n8n_redis_password, and n8n_encryption_key."
+    fail_msg: "For app_name=n8n_queue, set domain, timezone, app_admin_username, and app_admin_password. n8n service secrets are generated automatically if omitted."
 
 - name: Normalize n8n owner password
   ansible.builtin.set_fact:
@@ -56,7 +106,7 @@
 
 - name: Generate n8n owner password hash from supplied password
   ansible.builtin.set_fact:
-    n8n_password_hash_effective: "{{ n8n_owner_password | password_hash('bcrypt', (n8n_encryption_key | hash('sha256'))[:22]) }}"
+    n8n_password_hash_effective: "{{ n8n_owner_password | password_hash('bcrypt', (n8n_encryption_key_effective | hash('sha256'))[:22]) }}"
   when: n8n_password_hash_effective is not defined
   no_log: true
 
@@ -93,4 +143,3 @@
     project_src: "{{ n8n_project_dir }}"
     state: present
     pull: always
-
