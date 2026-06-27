@@ -138,6 +138,34 @@
     mode: "0600"
   no_log: true
 
+- name: Check existing n8n Compose file
+  ansible.builtin.stat:
+    path: "{{ n8n_project_dir }}/docker-compose.yml"
+  register: n8n_compose_file
+
+- name: Clean existing n8n stack and volumes
+  when:
+    - n8n_clean_install | bool
+    - n8n_compose_file.stat.exists
+  block:
+    - name: Stop n8n stack and remove project volumes
+      community.docker.docker_compose_v2:
+        project_src: "{{ n8n_project_dir }}"
+        state: absent
+        remove_volumes: true
+        remove_orphans: true
+      failed_when: false
+
+    - name: Remove n8n named volumes defensively
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - n8n_n8n-data
+        - n8n_postgresql-data
+        - n8n_redis-data
+      failed_when: false
+
 - name: Deploy n8n stack
   block:
     - name: Deploy n8n stack with Docker Compose
@@ -204,4 +232,14 @@
 
     - name: Fail n8n deployment with diagnostics
       ansible.builtin.fail:
-        msg: "n8n stack did not become healthy. Review the docker compose diagnostics printed above."
+        msg: |-
+          n8n stack did not become healthy.
+
+          docker compose ps:
+          {{ n8n_compose_ps.stdout | default('') }}
+
+          n8n logs:
+          {{ n8n_master_logs.stdout | default('') }}
+
+          postgresql logs:
+          {{ n8n_postgres_logs.stdout | default('') }}

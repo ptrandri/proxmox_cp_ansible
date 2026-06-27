@@ -220,11 +220,14 @@ Optional overrides:
 ```yaml
 n8n_public_port: 5178
 n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
+n8n_clean_install: false
 n8n_postgres_user: "n8n"
 n8n_postgres_password: "strong-postgres-password"
 n8n_redis_password: "strong-redis-password"
 n8n_encryption_key: "long-random-encryption-key"
 ```
+
+Set `n8n_clean_install: true` only when you want a fresh deployment. It removes the existing n8n Compose stack and deletes the n8n, Postgres, and Redis named volumes before redeploying.
 
 Run:
 
