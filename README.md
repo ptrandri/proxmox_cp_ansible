@@ -75,7 +75,7 @@ Use these common fields for every app:
 | Admin Password | `app_admin_password` | generated password / sensitive | app-dependent |
 | Timezone | `timezone` | select | yes |
 
-For n8n, set `app_name` to `n8n_queue`.
+For n8n, set `app_name` to `n8n_queue`. The playbook also accepts common labels such as `n8n`, `N8N Queue`, `n8n-queue`, and `deploy_n8n`.
 
 The n8n role also accepts the older aliases `n8n_username` and `n8n_password`, but `app_admin_username` and `app_admin_password` are preferred for multi-app automation.
 
@@ -137,6 +137,8 @@ app_admin_password: "n8n-owner-password"
 ```
 
 The n8n role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key` automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env` on redeploy.
+
+If Semaphore still asks for `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key` as required values, it is running an older Git commit. Push the latest repository changes and rerun the task.
 
 Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
 

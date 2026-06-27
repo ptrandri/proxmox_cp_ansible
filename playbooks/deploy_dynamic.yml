@@ -68,18 +68,29 @@
     supported_apps:
       n8n: apps/n8n_queue
       n8n_queue: apps/n8n_queue
+    app_aliases:
+      deploy_n8n: n8n_queue
+      n8n_queue_mode: n8n_queue
 
   pre_tasks:
     - name: Normalize selected app name
       ansible.builtin.set_fact:
-        selected_app_name: "{{ app_name | default(deploy_app | default(application | default(''))) | string | trim }}"
+        selected_app_name_raw: "{{ app_name | default(deploy_app | default(application | default('n8n_queue'))) | string | trim }}"
+
+    - name: Canonicalize selected app name
+      ansible.builtin.set_fact:
+        selected_app_name_normalized: "{{ selected_app_name_raw | lower | regex_replace('[^a-z0-9]+', '_') | regex_replace('^_+|_+$', '') }}"
+
+    - name: Resolve selected app alias
+      ansible.builtin.set_fact:
+        selected_app_name: "{{ app_aliases[selected_app_name_normalized] | default(selected_app_name_normalized) }}"
 
     - name: Validate selected app
       ansible.builtin.assert:
         that:
           - selected_app_name | length > 0
           - selected_app_name in supported_apps
-        fail_msg: "Set app_name to one of: {{ supported_apps.keys() | list | join(', ') }}."
+        fail_msg: "Unsupported app_name '{{ selected_app_name_raw }}' resolved to '{{ selected_app_name }}'. Use one of: {{ supported_apps.keys() | list | join(', ') }}."
 
   roles:
     - role: docker_host

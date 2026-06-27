@@ -1,15 +1,24 @@
 ---
+- name: Normalize Docker host facts
+  ansible.builtin.set_fact:
+    docker_host_os_family: "{{ ansible_facts['os_family'] }}"
+    docker_host_architecture: "{{ ansible_facts['architecture'] | lower }}"
+
 - name: Validate supported target operating system
   ansible.builtin.assert:
     that:
-      - ansible_facts["os_family"] == 'Debian'
+      - docker_host_os_family == 'Debian'
     fail_msg: "This role currently supports Debian/Ubuntu targets."
 
 - name: Validate supported CPU architecture for Docker Compose plugin
   ansible.builtin.assert:
     that:
-      - ansible_facts["architecture"] | lower in docker_compose_arch_map
-    fail_msg: "Unsupported architecture: {{ ansible_facts['architecture'] }}."
+      - docker_host_architecture in docker_compose_arch_map
+    fail_msg: "Unsupported architecture: {{ docker_host_architecture }}."
+
+- name: Resolve Docker Compose binary architecture
+  ansible.builtin.set_fact:
+    docker_compose_binary_arch: "{{ docker_compose_arch_map[docker_host_architecture] }}"
 
 - name: Install Docker prerequisites
   ansible.builtin.apt:
@@ -36,7 +45,7 @@
 
 - name: Install Docker Compose v2 plugin
   ansible.builtin.get_url:
-    url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-linux-{{ docker_compose_arch_map[ansible_facts['architecture'] | lower] }}"
+    url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-linux-{{ docker_compose_binary_arch }}"
     dest: /usr/local/lib/docker/cli-plugins/docker-compose
     owner: root
     group: root
