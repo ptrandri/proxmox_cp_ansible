@@ -1,6 +1,6 @@
 ---
 n8n_project_dir: "/opt/n8n"
-n8n_image: "docker.n8n.io/n8nio/n8n:1.122.3"
+n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
 n8n_public_port: 5178
 n8n_timezone_default: "Asia/Singapore"
 n8n_worker_concurrency: 15

@@ -12,6 +12,6 @@ app_admin_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
 # n8n_encryption_key: "long-random-encryption-key"
 
 n8n_project_dir: "/opt/n8n"
-n8n_image: "docker.n8n.io/n8nio/n8n:1.122.3"
+n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
 n8n_worker_concurrency: 15
 n8n_public_port: 5178

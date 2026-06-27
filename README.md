@@ -213,10 +213,13 @@ app_admin_password: "strong-n8n-owner-password"
 
 Default public port is `5178`, mapped to container port `5678`.
 
+The default n8n image is pinned to `docker.n8n.io/n8nio/n8n:2.27.4` so owner provisioning from environment variables works. You can override it with `n8n_image`, but keep it on n8n v2.17.0 or newer if you want `app_admin_username` and `app_admin_password` to create/manage the owner account automatically.
+
 Optional overrides:
 
 ```yaml
 n8n_public_port: 5178
+n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
 n8n_postgres_user: "n8n"
 n8n_postgres_password: "strong-postgres-password"
 n8n_redis_password: "strong-redis-password"
