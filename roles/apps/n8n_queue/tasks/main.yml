@@ -139,7 +139,59 @@
   no_log: true
 
 - name: Deploy n8n stack
-  community.docker.docker_compose_v2:
-    project_src: "{{ n8n_project_dir }}"
-    state: present
-    pull: always
+  block:
+    - name: Deploy n8n stack with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ n8n_project_dir }}"
+        state: present
+        pull: always
+        remove_orphans: true
+
+    - name: Wait for n8n master HTTP health endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ n8n_public_port }}/healthz"
+        status_code: 200
+        return_content: false
+      register: n8n_health_check
+      retries: 24
+      delay: 5
+      until: n8n_health_check.status == 200
+
+  rescue:
+    - name: Collect n8n compose status after failure
+      ansible.builtin.command:
+        cmd: docker compose ps
+        chdir: "{{ n8n_project_dir }}"
+      register: n8n_compose_ps
+      changed_when: false
+      failed_when: false
+
+    - name: Collect n8n master logs after failure
+      ansible.builtin.command:
+        cmd: docker compose logs --no-color --tail=120 n8n
+        chdir: "{{ n8n_project_dir }}"
+      register: n8n_master_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Collect n8n database logs after failure
+      ansible.builtin.command:
+        cmd: docker compose logs --no-color --tail=80 postgresql
+        chdir: "{{ n8n_project_dir }}"
+      register: n8n_postgres_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Show n8n diagnostics
+      ansible.builtin.debug:
+        msg:
+          - "docker compose ps:"
+          - "{{ n8n_compose_ps.stdout_lines | default([]) }}"
+          - "n8n logs:"
+          - "{{ n8n_master_logs.stdout_lines | default([]) }}"
+          - "postgresql logs:"
+          - "{{ n8n_postgres_logs.stdout_lines | default([]) }}"
+
+    - name: Fail n8n deployment with diagnostics
+      ansible.builtin.fail:
+        msg: "n8n stack did not become healthy. Review the docker compose diagnostics printed above."

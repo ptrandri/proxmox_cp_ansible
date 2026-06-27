@@ -63,11 +63,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - wget -qO- http://127.0.0.1:5678/healthz || exit 1
-      interval: 30s
+        - node -e "require('http').get('http://127.0.0.1:5678/healthz', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 15s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 12
+      start_period: 120s
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -106,7 +106,7 @@ services:
       - ./local-files:/files
     depends_on:
       n8n:
-        condition: service_healthy
+        condition: service_started
       postgresql:
         condition: service_healthy
       redis:
@@ -173,4 +173,3 @@ volumes:
   n8n-data:
   postgresql-data:
   redis-data:
-
