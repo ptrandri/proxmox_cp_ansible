@@ -1,0 +1,16 @@
+---
+- name: Deploy n8n queue mode with Docker Compose
+  hosts: "{{ target_hosts | default('n8n_servers') }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    app_name: n8n_queue
+
+  roles:
+    - role: docker_host
+
+  tasks:
+    - name: Deploy n8n queue role
+      ansible.builtin.include_role:
+        name: apps/n8n_queue

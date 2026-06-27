@@ -1,0 +1,7 @@
+*.retry
+
+# Local deployment inputs can contain VM credentials and app secrets.
+inventories/production/hosts.ini
+inventories/production/hosts.yml
+vars/n8n.yml
+vars/apps/*.yml

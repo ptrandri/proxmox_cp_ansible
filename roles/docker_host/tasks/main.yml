@@ -1,0 +1,48 @@
+---
+- name: Validate supported target operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'Debian'
+    fail_msg: "This role currently supports Debian/Ubuntu targets. Add OS-specific Docker install tasks for {{ ansible_os_family }}."
+
+- name: Validate supported CPU architecture for Docker Compose plugin
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture | lower in docker_compose_arch_map
+    fail_msg: "Unsupported architecture: {{ ansible_architecture }}. Update docker_compose_arch_map."
+
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - docker.io
+    state: present
+    update_cache: true
+
+- name: Ensure Docker service is running
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Create Docker Compose plugin directory
+  ansible.builtin.file:
+    path: /usr/local/lib/docker/cli-plugins
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Docker Compose v2 plugin
+  ansible.builtin.get_url:
+    url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-linux-{{ docker_compose_arch_map[ansible_architecture | lower] }}"
+    dest: /usr/local/lib/docker/cli-plugins/docker-compose
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Verify Docker Compose plugin
+  ansible.builtin.command: docker compose version
+  changed_when: false
+

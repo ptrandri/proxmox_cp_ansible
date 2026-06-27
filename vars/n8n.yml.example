@@ -1,0 +1,17 @@
+---
+app_name: "n8n_queue"
+domain: "n8n.example.com"
+timezone: "Asia/Singapore"
+app_admin_username: "owner@example.com"
+app_admin_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
+
+n8n_postgres_user: "n8n"
+n8n_postgres_password: "CHANGE_ME_POSTGRES_PASSWORD"
+n8n_redis_password: "CHANGE_ME_REDIS_PASSWORD"
+n8n_encryption_key: "CHANGE_ME_LONG_RANDOM_ENCRYPTION_KEY"
+
+n8n_project_dir: "/opt/n8n"
+n8n_image: "docker.n8n.io/n8nio/n8n:1.122.3"
+n8n_worker_concurrency: 15
+n8n_public_port: 80
+docker_compose_version: "v2.39.4"

@@ -1,0 +1,212 @@
+services:
+  n8n:
+    container_name: n8n_master
+    image: "{{ n8n_image }}"
+    ports:
+      - "{{ n8n_public_port }}:5678"
+    environment:
+      - SERVICE_URL_N8N_5678
+      - N8N_EDITOR_BASE_URL=${SERVICE_URL_N8N}
+      - WEBHOOK_URL=${SERVICE_URL_N8N}
+      - N8N_HOST=${N8N_DOMAIN}
+      - N8N_PROTOCOL=${N8N_PROTOCOL}
+      - N8N_PATH=/
+      - N8N_LISTEN_ADDRESS=0.0.0.0
+      - N8N_PORT=5678
+      - GENERIC_TIMEZONE=${TIMEZONE}
+      - TZ=${TIMEZONE}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_HOST=postgresql
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_USER=${SERVICE_USER_POSTGRES}
+      - DB_POSTGRESDB_SCHEMA=public
+      - DB_POSTGRESDB_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_BULL_REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
+      - QUEUE_BULL_REDIS_DB=0
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
+      - N8N_ENCRYPTION_KEY=${SERVICE_PASSWORD_ENCRYPTION}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
+      - N8N_GIT_NODE_DISABLE_BARE_REPOS=true
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_PROXY_HOPS=1
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      - N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true
+      - N8N_INSTANCE_OWNER_EMAIL=${N8N_INSTANCE_OWNER_EMAIL}
+      - N8N_INSTANCE_OWNER_FIRST_NAME=${N8N_INSTANCE_OWNER_FIRST_NAME}
+      - N8N_INSTANCE_OWNER_LAST_NAME=${N8N_INSTANCE_OWNER_LAST_NAME}
+      - N8N_INSTANCE_OWNER_PASSWORD_HASH=${N8N_INSTANCE_OWNER_PASSWORD_HASH}
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE}
+      - N8N_METRICS=true
+      - N8N_METRICS_INCLUDE_DEFAULT_METRICS=true
+      - N8N_METRICS_INCLUDE_QUEUE_METRICS=true
+      - N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL=true
+      - N8N_METRICS_INCLUDE_NODE_TYPE_LABEL=true
+      - N8N_BINARY_DATA_MODE=filesystem
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336
+      - N8N_PAYLOAD_SIZE_MAX=64
+      - EXECUTIONS_TIMEOUT=7200
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./local-files:/files
+    extra_hosts:
+      - api.abuseipdb.com=104.26.13.38
+      - api.ipdata.co=13.228.190.110
+      - api.ipinfo.io=34.117.59.81
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:5678/healthz || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+
+  n8n-worker:
+    image: "{{ n8n_image }}"
+    command: worker --concurrency={{ n8n_worker_concurrency }}
+    environment:
+      - GENERIC_TIMEZONE=${TIMEZONE}
+      - TZ=${TIMEZONE}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_HOST=postgresql
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_USER=${SERVICE_USER_POSTGRES}
+      - DB_POSTGRESDB_SCHEMA=public
+      - DB_POSTGRESDB_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_BULL_REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS}
+      - QUEUE_BULL_REDIS_DB=0
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - N8N_ENCRYPTION_KEY=${SERVICE_PASSWORD_ENCRYPTION}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
+      - N8N_GIT_NODE_DISABLE_BARE_REPOS=true
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_PROXY_HOPS=1
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_BINARY_DATA_MODE=filesystem
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./local-files:/files
+    extra_hosts:
+      - api.abuseipdb.com=104.26.13.38
+      - api.ipdata.co=13.228.190.110
+      - api.ipinfo.io=34.117.59.81
+    depends_on:
+      n8n:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:5678/healthz/readiness || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+
+  postgresql:
+    container_name: n8n_db
+    image: postgres:16-alpine
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=n8n
+      - TZ=${TIMEZONE}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  redis:
+    container_name: n8n_redis
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --requirepass
+      - ${SERVICE_PASSWORD_REDIS}
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 1gb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redis-data:/data
+    environment:
+      - TZ=${TIMEZONE}
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - -a
+        - ${SERVICE_PASSWORD_REDIS}
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  n8n-data:
+  postgresql-data:
+  redis-data:
+

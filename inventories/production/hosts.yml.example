@@ -1,0 +1,22 @@
+---
+all:
+  children:
+    app_servers:
+      hosts:
+        # SSH key example:
+        # app-prod:
+        #   ansible_host: "YOUR_VM_IP"
+        #   ansible_user: "ubuntu"
+        #   ansible_ssh_private_key_file: "~/.ssh/id_rsa"
+
+        # Password example:
+        # app-prod:
+        #   ansible_host: "YOUR_VM_IP"
+        #   ansible_user: "root"
+        #   ansible_password: "YOUR_SSH_PASSWORD"
+        #   ansible_become_password: "YOUR_SUDO_PASSWORD"
+
+    # Backward-compatible group for the n8n wrapper playbook.
+    n8n_servers:
+      children:
+        app_servers:
