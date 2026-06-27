@@ -13,8 +13,8 @@
         that:
           - vm_user is defined
           - vm_user | string | trim | length > 0
-          - vm_password is defined or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined
-        fail_msg: "When vm_ip is provided, also set vm_user and one of: vm_password, vm_ssh_private_key_file, or vm_ssh_private_key."
+          - vm_password is defined or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined or vm_ssh_private_key_b64 is defined
+        fail_msg: "When vm_ip is provided, also set vm_user and one of: vm_password, vm_ssh_private_key_file, vm_ssh_private_key, or vm_ssh_private_key_b64."
       when: vm_ip is defined and (vm_ip | string | trim | length > 0)
 
     - name: Create temporary SSH private key file from dynamic input
@@ -24,13 +24,19 @@
       register: dynamic_ssh_private_key_file
       when:
         - vm_ip is defined and (vm_ip | string | trim | length > 0)
-        - vm_ssh_private_key is defined
-        - vm_ssh_private_key | string | trim | length > 0
+        - (vm_ssh_private_key | default('') | string | trim | length > 0) or (vm_ssh_private_key_b64 | default('') | string | trim | length > 0)
       no_log: true
 
     - name: Write dynamic SSH private key
       ansible.builtin.copy:
-        content: "{{ (vm_ssh_private_key | string | replace('\\r\\n', '\n') | replace('\\n', '\n')) ~ '\n' }}"
+        content: >-
+          {{
+            (
+              vm_ssh_private_key_b64 | b64decode
+              if (vm_ssh_private_key_b64 | default('') | string | trim | length > 0)
+              else (vm_ssh_private_key | string | replace('\\r\\n', '\n') | replace('\\n', '\n'))
+            ) ~ '\n'
+          }}
         dest: "{{ dynamic_ssh_private_key_file.path }}"
         mode: "0600"
       when:

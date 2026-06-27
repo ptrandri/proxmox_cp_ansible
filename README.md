@@ -112,7 +112,7 @@ Then create a task template with:
   - `vm_ip`
   - `vm_user`
   - `vm_port` if SSH is not on port 22
-  - `vm_password`, `vm_ssh_private_key`, or `vm_ssh_private_key_file`
+  - `vm_password`, `vm_ssh_private_key_b64`, `vm_ssh_private_key`, or `vm_ssh_private_key_file`
   - `vm_become_password` if sudo password is different
   - `app_name`
   - `domain`
@@ -141,7 +141,33 @@ n8n_encryption_key: "long-random-encryption-key"
 
 Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
 
-For SSH key authentication from a dynamic Semaphore field, add a sensitive textarea field named:
+For SSH key authentication from a single-line Semaphore field, use base64. Add a sensitive field named:
+
+```yaml
+vm_ssh_private_key_b64: "ONE_LINE_BASE64_PRIVATE_KEY"
+```
+
+Generate it on Linux/macOS:
+
+```bash
+base64 -w 0 ~/.ssh/id_ed25519
+```
+
+If `-w` is not supported:
+
+```bash
+base64 ~/.ssh/id_ed25519 | tr -d '\n'
+```
+
+Generate it on Windows PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.ssh\id_ed25519"))
+```
+
+Then paste the output into the one-line Semaphore field `vm_ssh_private_key_b64`.
+
+If Semaphore gives you a multi-line textarea, you can also use:
 
 ```yaml
 vm_ssh_private_key: |
