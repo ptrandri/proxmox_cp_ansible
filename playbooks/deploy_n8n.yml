@@ -1,7 +1,7 @@
 ---
 - name: Deploy n8n queue mode
   hosts: "{{ target_hosts | default('all') }}"
-  become: true
+  become: "{{ deploy_become | default(true) }}"
   gather_facts: true
 
   roles:
@@ -11,4 +11,3 @@
     - name: Deploy n8n queue role
       ansible.builtin.include_role:
         name: apps/n8n_queue
-

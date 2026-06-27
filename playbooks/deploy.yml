@@ -1,7 +1,41 @@
 ---
+- name: Build dynamic deployment inventory when vm_ip is provided
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    dynamic_target_group: dynamic_app_servers
+    dynamic_target_name: "{{ vm_name | default('dynamic-app-target') }}"
+
+  tasks:
+    - name: Validate dynamic VM input
+      ansible.builtin.assert:
+        that:
+          - vm_user is defined
+          - vm_user | string | trim | length > 0
+          - vm_password is defined or vm_ssh_private_key_file is defined
+        fail_msg: "When vm_ip is provided, also set vm_user and either vm_password or vm_ssh_private_key_file."
+      when: vm_ip is defined and (vm_ip | string | trim | length > 0)
+
+    - name: Add VM from dynamic input
+      ansible.builtin.add_host:
+        name: "{{ dynamic_target_name }}"
+        groups: "{{ dynamic_target_group }}"
+        ansible_host: "{{ vm_ip | string | trim }}"
+        ansible_user: "{{ vm_user | string | trim }}"
+        ansible_port: "{{ vm_port | default(omit) }}"
+        ansible_connection: ssh
+        ansible_password: "{{ vm_password | default(omit) }}"
+        ansible_become_password: "{{ vm_become_password | default(vm_password | default(omit)) }}"
+        ansible_ssh_private_key_file: "{{ vm_ssh_private_key_file | default(omit) }}"
+        ansible_ssh_common_args: "{{ vm_ssh_common_args | default('-o StrictHostKeyChecking=no') }}"
+        deploy_become: "{{ vm_become | default((vm_user | string | trim) != 'root') }}"
+      when: vm_ip is defined and (vm_ip | string | trim | length > 0)
+      no_log: true
+
 - name: Deploy selected application
-  hosts: "{{ target_hosts | default('all') }}"
-  become: true
+  hosts: "{{ 'dynamic_app_servers' if (vm_ip is defined and (vm_ip | string | trim | length > 0)) else (target_hosts | default('all')) }}"
+  become: "{{ deploy_become | default(true) }}"
   gather_facts: true
 
   vars:
@@ -28,4 +62,3 @@
     - name: Deploy app role
       ansible.builtin.include_role:
         name: "{{ supported_apps[selected_app_name] }}"
-

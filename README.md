@@ -89,11 +89,11 @@ Create an Ansible Playbook template in Semaphore with:
 - Environment: one that has Ansible, Docker collection requirements, and Python dependencies installed.
 - Survey/Extra Variables: the generic fields above plus app-specific secrets.
 
-`playbooks/deploy.yml` targets `hosts: all` by default, which works well when the Semaphore inventory contains only the VM for this deployment. If one inventory contains multiple hosts, pass `target_hosts` or use Semaphore's Ansible limit option.
+`playbooks/deploy.yml` targets `hosts: all` by default for static inventories. If `vm_ip` is provided, it switches to dynamic mode, creates the target host with `add_host`, and deploys to that VM instead of localhost.
 
 ## Dynamic VM IP From Semaphore
 
-If `vm_ip` is dynamic, use `playbooks/deploy_dynamic.yml`.
+If `vm_ip` is dynamic, use `playbooks/deploy.yml` or `playbooks/deploy_dynamic.yml`. The generic `deploy.yml` now supports both static inventory and dynamic VM input.
 
 In Semaphore, create a simple localhost inventory:
 
@@ -140,6 +140,14 @@ n8n_encryption_key: "long-random-encryption-key"
 ```
 
 Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
+
+If `vm_user` is `root`, the dynamic playbook disables sudo automatically because many minimal VM images do not include `sudo`. For non-root users, it uses sudo by default. You can override this with:
+
+```yaml
+vm_become: false
+```
+
+The error `/bin/sh: sudo: not found` usually means Semaphore ran the static inventory localhost instead of the dynamic VM, or the target user is root on a minimal image. Make sure `vm_ip` is passed and use the dynamic fields above.
 
 ## Deploy n8n Queue Mode
 
