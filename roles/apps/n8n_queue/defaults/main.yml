@@ -7,3 +7,4 @@ n8n_worker_concurrency: 15
 n8n_owner_first_name: "n8n"
 n8n_owner_last_name: "Admin"
 n8n_clean_install: false
+app_basic_auth: false

@@ -71,6 +71,7 @@ Use these common fields for every app:
 | --- | --- | --- | --- |
 | Application | `app_name` | select | yes |
 | Domain Name | `app_domain` | text | yes |
+| Enable Basic Auth | `app_basic_auth` | switch | yes |
 | Admin Username | `app_admin_username` | text/email | app-dependent |
 | Admin Password | `app_admin_password` | generated password / sensitive | app-dependent |
 | Timezone | `app_timezone` | select | yes |
@@ -117,6 +118,7 @@ Then create a task template with:
   - `app_name`
   - `app_domain`
   - `app_timezone`
+  - `app_basic_auth`
   - app-specific variables
 
 If these are Semaphore survey fields, Semaphore passes them to Ansible automatically. Do not create self-referencing extra vars like `vm_ip: "{{ vm_ip }}"` unless your Semaphore webhook template explicitly renders placeholders before Ansible runs.
@@ -132,9 +134,12 @@ vm_become_password: "sudo-password"
 
 app_domain: "n8n.example.com"
 app_timezone: "Asia/Singapore"
+app_basic_auth: true
 app_admin_username: "owner@example.com"
 app_admin_password: "n8n-owner-password"
 ```
+
+If `app_basic_auth` is `true`, n8n owner account is provisioned from `app_admin_username` and `app_admin_password`. If it is `false`, the owner variables are not sent to n8n and the user sets up email/password manually in the n8n UI.
 
 The n8n role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key` automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env` on redeploy.
 
@@ -207,6 +212,13 @@ Minimum vars:
 app_name: "n8n_queue"
 app_domain: "n8n.example.com"
 app_timezone: "Asia/Singapore"
+app_basic_auth: false
+```
+
+If you want Ansible to provision the n8n owner account:
+
+```yaml
+app_basic_auth: true
 app_admin_username: "owner@example.com"
 app_admin_password: "strong-n8n-owner-password"
 ```
@@ -243,6 +255,7 @@ If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` ins
 app_name: "{{ app_name }}"
 app_domain: "{{ app_domain }}"
 app_timezone: "{{ app_timezone }}"
+app_basic_auth: "{{ app_basic_auth }}"
 app_admin_username: "{{ app_admin_username }}"
 app_admin_password: "{{ app_admin_password }}"
 ```

@@ -2,6 +2,9 @@
 app_name: "n8n_queue"
 app_domain: "n8n.example.com"
 app_timezone: "Asia/Singapore"
+app_basic_auth: false
+
+# Required only when app_basic_auth is true.
 app_admin_username: "owner@example.com"
 app_admin_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
 
