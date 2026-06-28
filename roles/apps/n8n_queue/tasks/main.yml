@@ -1,8 +1,8 @@
 ---
 - name: Normalize n8n deployment variables
   ansible.builtin.set_fact:
-    n8n_domain_input: "{{ domain | default(app_domain | default(n8n_domain | default(''))) | string | trim }}"
-    n8n_timezone_effective: "{{ timezone | default(app_timezone | default(n8n_timezone | default(n8n_timezone_default))) | string | trim }}"
+    n8n_domain_input: "{{ app_domain | default(domain | default(n8n_domain | default(''))) | string | trim }}"
+    n8n_timezone_effective: "{{ app_timezone | default(timezone | default(n8n_timezone | default(n8n_timezone_default))) | string | trim }}"
     n8n_owner_email: "{{ n8n_username | default(app_admin_username | default(owner_email | default(''))) | string | trim }}"
   no_log: true
 
@@ -90,7 +90,7 @@
       - n8n_timezone_effective | length > 0
       - (n8n_password_hash | default('') | string | length > 0) or (n8n_password | default(app_admin_password | default('')) | string | length > 0)
       - (n8n_password_hash | default('') | string | length > 0) or ((n8n_password | default(app_admin_password | default(''))) != 'CHANGE_ME_N8N_OWNER_PASSWORD')
-    fail_msg: "For app_name=n8n_queue, set domain, timezone, app_admin_username, and app_admin_password. n8n service secrets are generated automatically if omitted."
+    fail_msg: "For app_name=n8n_queue, set app_domain, app_timezone, app_admin_username, and app_admin_password. n8n service secrets are generated automatically if omitted."
 
 - name: Normalize n8n owner password
   ansible.builtin.set_fact:

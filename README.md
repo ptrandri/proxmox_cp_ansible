@@ -70,10 +70,10 @@ Use these common fields for every app:
 | Label | Variable | Type | Required |
 | --- | --- | --- | --- |
 | Application | `app_name` | select | yes |
-| Domain Name | `domain` | text | yes |
+| Domain Name | `app_domain` | text | yes |
 | Admin Username | `app_admin_username` | text/email | app-dependent |
 | Admin Password | `app_admin_password` | generated password / sensitive | app-dependent |
-| Timezone | `timezone` | select | yes |
+| Timezone | `app_timezone` | select | yes |
 
 For n8n, set `app_name` to `n8n_queue`. The playbook also accepts common labels such as `n8n`, `N8N Queue`, `n8n-queue`, and `deploy_n8n`.
 
@@ -115,8 +115,8 @@ Then create a task template with:
   - `vm_password`, `vm_ssh_private_key_b64`, `vm_ssh_private_key`, or `vm_ssh_private_key_file`
   - `vm_become_password` if sudo password is different
   - `app_name`
-  - `domain`
-  - `timezone`
+  - `app_domain`
+  - `app_timezone`
   - app-specific variables
 
 If these are Semaphore survey fields, Semaphore passes them to Ansible automatically. Do not create self-referencing extra vars like `vm_ip: "{{ vm_ip }}"` unless your Semaphore webhook template explicitly renders placeholders before Ansible runs.
@@ -130,8 +130,8 @@ vm_user: "root"
 vm_password: "ssh-password"
 vm_become_password: "sudo-password"
 
-domain: "n8n.example.com"
-timezone: "Asia/Singapore"
+app_domain: "n8n.example.com"
+app_timezone: "Asia/Singapore"
 app_admin_username: "owner@example.com"
 app_admin_password: "n8n-owner-password"
 ```
@@ -205,8 +205,8 @@ Minimum vars:
 
 ```yaml
 app_name: "n8n_queue"
-domain: "n8n.example.com"
-timezone: "Asia/Singapore"
+app_domain: "n8n.example.com"
+app_timezone: "Asia/Singapore"
 app_admin_username: "owner@example.com"
 app_admin_password: "strong-n8n-owner-password"
 ```
@@ -241,13 +241,13 @@ If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` ins
 
 ```yaml
 app_name: "{{ app_name }}"
-domain: "{{ domain }}"
-timezone: "{{ timezone }}"
+app_domain: "{{ app_domain }}"
+app_timezone: "{{ app_timezone }}"
 app_admin_username: "{{ app_admin_username }}"
 app_admin_password: "{{ app_admin_password }}"
 ```
 
-If `domain` is `n8n.example.com`, the role uses `https://n8n.example.com`. If HTTP is required, pass `http://n8n.example.com`.
+If `app_domain` is `n8n.example.com`, the role uses `https://n8n.example.com`. If HTTP is required, pass `http://n8n.example.com`.
 
 ## Adding Another App
 
