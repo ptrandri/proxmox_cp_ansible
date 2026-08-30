@@ -3,30 +3,40 @@
   hosts: localhost
   gather_facts: false
 
+  vars_files:
+    - ../vars/semaphore_env.yml
+
   vars:
     dynamic_target_group: dynamic_app_servers
     dynamic_target_name: "{{ vm_name | default('dynamic-app-target') }}"
 
   tasks:
-    - name: Normalize dynamic VM credential input
+    - name: Normalize dynamic VM input
       ansible.builtin.set_fact:
-        vm_ssh_password_effective: "{{ vm_password | default(vm_pass | default('')) | string }}"
-        vm_sudo_password_effective: >-
-          {{
-            vm_become_password
-            | default(vm_sudo_pass | default(vm_sudo_password | default(vm_password | default(vm_pass | default('')))))
-            | string
-          }}
+        vm_ip_effective: "{{ vm_ip | default('') | string | trim }}"
         vm_user_effective: "{{ vm_user | default('') | string | trim }}"
+        vm_port_effective: "{{ vm_port | default('') | string | trim }}"
+        vm_ssh_password_effective: "{{ vm_pass | default('', true) | string }}"
+        vm_sudo_password_effective: "{{ vm_become_password | default('', true) | default(vm_pass | default(''), true) | string }}"
+        vm_ssh_private_key_file_effective: "{{ vm_ssh_private_key_file | default('') | string | trim }}"
+        vm_ssh_private_key_effective: "{{ vm_ssh_private_key | default('') | string }}"
+        vm_ssh_private_key_b64_effective: "{{ vm_ssh_private_key_b64 | default('') | string | trim }}"
       no_log: true
 
     - name: Validate dynamic VM input
       ansible.builtin.assert:
         that:
           - vm_user_effective | length > 0
-          - (vm_ssh_password_effective | length > 0) or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined or vm_ssh_private_key_b64 is defined
-        fail_msg: "When vm_ip is provided, also set vm_user and one of: vm_pass, vm_password, vm_ssh_private_key_file, vm_ssh_private_key, or vm_ssh_private_key_b64."
-      when: vm_ip is defined and (vm_ip | string | trim | length > 0)
+          - >-
+            (vm_ssh_password_effective | length > 0)
+            or (vm_ssh_private_key_file_effective | length > 0)
+            or (vm_ssh_private_key_effective | length > 0)
+            or (vm_ssh_private_key_b64_effective | length > 0)
+        fail_msg: >-
+          When vm_ip is provided, also set vm_user and one of: vm_pass, vm_ssh_private_key_b64,
+          vm_ssh_private_key, or vm_ssh_private_key_file. These can come from a Semaphore survey field,
+          the task environment JSON, or a Semaphore Environment variable (VM_USER, VM_PASS, ...).
+      when: vm_ip_effective | length > 0
 
     - name: Create temporary SSH private key file from dynamic input
       ansible.builtin.tempfile:
@@ -34,8 +44,8 @@
         suffix: .pem
       register: dynamic_ssh_private_key_file
       when:
-        - vm_ip is defined and (vm_ip | string | trim | length > 0)
-        - (vm_ssh_private_key | default('') | string | trim | length > 0) or (vm_ssh_private_key_b64 | default('') | string | trim | length > 0)
+        - vm_ip_effective | length > 0
+        - (vm_ssh_private_key_effective | length > 0) or (vm_ssh_private_key_b64_effective | length > 0)
       no_log: true
 
     - name: Write dynamic SSH private key
@@ -43,9 +53,9 @@
         content: >-
           {{
             (
-              vm_ssh_private_key_b64 | b64decode
-              if (vm_ssh_private_key_b64 | default('') | string | trim | length > 0)
-              else (vm_ssh_private_key | string | replace('\\r\\n', '\n') | replace('\\n', '\n'))
+              vm_ssh_private_key_b64_effective | b64decode
+              if (vm_ssh_private_key_b64_effective | length > 0)
+              else (vm_ssh_private_key_effective | replace('\\r\\n', '\n') | replace('\\n', '\n'))
             ) ~ '\n'
           }}
         dest: "{{ dynamic_ssh_private_key_file.path }}"
@@ -59,34 +69,44 @@
       ansible.builtin.add_host:
         name: "{{ dynamic_target_name }}"
         groups: "{{ dynamic_target_group }}"
-        ansible_host: "{{ vm_ip | string | trim }}"
+        ansible_host: "{{ vm_ip_effective }}"
         ansible_user: "{{ vm_user_effective }}"
-        ansible_port: "{{ vm_port | default(omit) }}"
+        ansible_port: "{{ vm_port_effective | default(omit, true) }}"
         ansible_connection: ssh
         ansible_password: "{{ vm_ssh_password_effective | default(omit, true) }}"
         ansible_become_password: "{{ vm_sudo_password_effective | default(omit, true) }}"
-        ansible_ssh_private_key_file: "{{ dynamic_ssh_private_key_file.path | default(vm_ssh_private_key_file | default(omit)) }}"
+        ansible_ssh_private_key_file: >-
+          {{
+            dynamic_ssh_private_key_file.path
+            | default(vm_ssh_private_key_file_effective, true)
+            | default(omit, true)
+          }}
         ansible_ssh_common_args: "{{ vm_ssh_common_args | default('-o StrictHostKeyChecking=no -o IdentitiesOnly=yes') }}"
         deploy_become: "{{ vm_become | default(vm_user_effective != 'root') }}"
         deploy_become_method: "{{ vm_become_method | default('sudo') }}"
         deploy_remote_user: "{{ vm_user_effective }}"
-      when: vm_ip is defined and (vm_ip | string | trim | length > 0)
+      when: vm_ip_effective | length > 0
       no_log: true
 
 - name: Deploy selected application
-  hosts: "{{ 'dynamic_app_servers' if (vm_ip is defined and (vm_ip | string | trim | length > 0)) else (target_hosts | default('all')) }}"
+  hosts: >-
+    {{
+      'dynamic_app_servers'
+      if ((vm_ip | default(lookup('env', 'VM_IP'), true) | string | trim | length) > 0)
+      else (target_hosts | default('all'))
+    }}
   become: "{{ deploy_become | default(true) }}"
   become_method: "{{ deploy_become_method | default('sudo') }}"
   become_user: root
   gather_facts: true
 
+  vars_files:
+    - ../vars/semaphore_env.yml
+
   vars:
     supported_apps:
       n8n: apps/n8n_queue
       n8n_queue: apps/n8n_queue
-    app_aliases:
-      deploy_n8n: n8n_queue
-      n8n_queue_mode: n8n_queue
 
   pre_tasks:
     - name: Check privilege escalation for the deployment user
@@ -101,21 +121,27 @@
           - deploy_privilege_check.rc == 0
           - (deploy_privilege_check.stdout | default('') | trim) == '0'
         fail_msg: >-
-          User '{{ deploy_remote_user | default(ansible_user | default('unknown')) }}' could not become root on this VM.
-          Give the user passwordless sudo, or pass its sudo password as vm_pass (or vm_become_password if it differs
-          from the SSH password).
+          User '{{ deploy_remote_user | default(ansible_user | default('unknown')) }}' could not become root on
+          this VM. Give the user passwordless sudo, or pass its sudo password as vm_pass (or vm_become_password
+          if it differs from the SSH password).
+
+    - name: Normalize workload type
+      ansible.builtin.set_fact:
+        workload_type_effective: "{{ workload_type | default('qemu', true) | string | trim | lower }}"
+
+    - name: Validate workload type
+      ansible.builtin.assert:
+        that:
+          - workload_type_effective in ['qemu', 'kvm', 'vm', 'lxc', 'container']
+        fail_msg: "Unsupported workload_type '{{ workload_type_effective }}'. Use 'qemu' or 'lxc'."
 
     - name: Normalize selected app name
       ansible.builtin.set_fact:
-        selected_app_name_raw: "{{ app_name | default(deploy_app | default(application | default('n8n_queue'))) | string | trim }}"
+        selected_app_name_raw: "{{ app_name | default('n8n_queue', true) | string | trim }}"
 
     - name: Canonicalize selected app name
       ansible.builtin.set_fact:
-        selected_app_name_normalized: "{{ selected_app_name_raw | lower | regex_replace('[^a-z0-9]+', '_') | regex_replace('^_+|_+$', '') }}"
-
-    - name: Resolve selected app alias
-      ansible.builtin.set_fact:
-        selected_app_name: "{{ app_aliases[selected_app_name_normalized] | default(selected_app_name_normalized) }}"
+        selected_app_name: "{{ selected_app_name_raw | lower | regex_replace('[^a-z0-9]+', '_') | regex_replace('^_+|_+$', '') }}"
 
     - name: Validate selected app
       ansible.builtin.assert:
@@ -126,6 +152,7 @@
 
   roles:
     - role: docker_host
+      docker_host_workload_type: "{{ workload_type_effective | default('qemu') }}"
 
   tasks:
     - name: Deploy app role

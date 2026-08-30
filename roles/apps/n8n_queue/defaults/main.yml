@@ -2,9 +2,14 @@
 n8n_project_dir: "/opt/n8n"
 n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
 n8n_public_port: 5178
-n8n_timezone_default: "Asia/Singapore"
+n8n_timezone_default: "Asia/Jakarta"
 n8n_worker_concurrency: 15
 n8n_owner_first_name: "n8n"
 n8n_owner_last_name: "Admin"
+
+# Owner account is provisioned only when both n8n_basic_auth_user and n8n_basic_auth_password are set.
+# n8n_basic_auth_user must be an email address unless n8n_owner_email_strict is disabled.
+n8n_owner_email_strict: true
+
+n8n_custom_domain: false
 n8n_clean_install: false
-app_basic_auth: false

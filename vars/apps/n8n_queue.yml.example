@@ -1,17 +1,26 @@
 ---
+# Local CLI example. In Semaphore these come from the task "environment" JSON
+# or from the Environment variables listed in vars/semaphore_env.yml.
 app_name: "n8n_queue"
+workload_type: "qemu"
 
-# Optional. If left empty, the role falls back to http://<vm_ip>.
-app_domain: "n8n.example.com"
-app_timezone: "Asia/Jakarta"
-app_basic_auth: true
+vm_ip: "192.168.50.10"
+vm_user: "ubuntu"
+vm_pass: "CHANGE_ME_SSH_PASSWORD"
 
-# Required only when app_basic_auth is true.
-app_username: "owner@example.com"
-app_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
+n8n_timezone: "Asia/Jakarta"
+n8n_clean_install: false
 
-# Set to true only for a fresh deployment. It removes the stack and its volumes.
-app_clean_install: false
+# true  -> n8n_domain is used
+# false -> n8n_generated_domain is used
+n8n_custom_domain: false
+n8n_domain: ""
+n8n_generated_domain: "n8n-71bd257c0d.bataminfra.id"
+
+# Owner account. Leave both empty to set up the owner manually in the n8n UI.
+# n8n_basic_auth_user must be an email address.
+n8n_basic_auth_user: "owner@example.com"
+n8n_basic_auth_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
 
 # Optional. If omitted, the role generates and persists these in /opt/n8n/.env.
 # n8n_postgres_user: "n8n"

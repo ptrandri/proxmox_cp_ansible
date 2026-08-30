@@ -1,0 +1,38 @@
+---
+# Fallback layer for the "Environment Variables" section of an Ansible Semaphore Environment.
+#
+# Precedence, highest first:
+#   1. Extra variables - the task "environment" JSON sent by the backend, survey fields, or -e on the CLI.
+#   2. This file       - process environment variables set by the Semaphore Environment.
+#   3. Role defaults   - roles/*/defaults/main.yml.
+#
+# Extra variables outrank vars_files in Ansible, so anything the backend sends per deployment always wins.
+# Empty or unset environment variables fall through to the defaults below.
+
+# Connection
+vm_ip: "{{ lookup('env', 'VM_IP') | default('', true) }}"
+vm_user: "{{ lookup('env', 'VM_USER') | default('root', true) }}"
+vm_pass: "{{ lookup('env', 'VM_PASS') | default('', true) }}"
+vm_port: "{{ lookup('env', 'VM_PORT') | default('', true) }}"
+vm_become_password: "{{ lookup('env', 'VM_BECOME_PASSWORD') | default('', true) }}"
+vm_ssh_private_key_b64: "{{ lookup('env', 'VM_SSH_PRIVATE_KEY_B64') | default('', true) }}"
+vm_ssh_private_key_file: "{{ lookup('env', 'VM_SSH_PRIVATE_KEY_FILE') | default('', true) }}"
+
+# Placement
+workload_type: "{{ lookup('env', 'WORKLOAD_TYPE') | default('qemu', true) }}"
+
+# Application selection
+app_name: "{{ lookup('env', 'APP_NAME') | default('n8n_queue', true) }}"
+
+# n8n
+n8n_timezone: "{{ lookup('env', 'N8N_TIMEZONE') | default('Asia/Jakarta', true) }}"
+n8n_clean_install: "{{ lookup('env', 'N8N_CLEAN_INSTALL') | default('false', true) | bool }}"
+n8n_custom_domain: "{{ lookup('env', 'N8N_CUSTOM_DOMAIN') | default('false', true) | bool }}"
+n8n_domain: "{{ lookup('env', 'N8N_DOMAIN') | default('', true) }}"
+n8n_generated_domain: "{{ lookup('env', 'N8N_GENERATED_DOMAIN') | default('', true) }}"
+n8n_basic_auth_user: "{{ lookup('env', 'N8N_BASIC_AUTH_USER') | default('', true) }}"
+n8n_basic_auth_password: "{{ lookup('env', 'N8N_BASIC_AUTH_PASSWORD') | default('', true) }}"
+n8n_public_port: "{{ lookup('env', 'N8N_PUBLIC_PORT') | default('5178', true) | int }}"
+n8n_image: "{{ lookup('env', 'N8N_IMAGE') | default('docker.n8n.io/n8nio/n8n:2.27.4', true) }}"
+n8n_worker_concurrency: "{{ lookup('env', 'N8N_WORKER_CONCURRENCY') | default('15', true) | int }}"
+n8n_owner_email_strict: "{{ lookup('env', 'N8N_OWNER_EMAIL_STRICT') | default('true', true) | bool }}"

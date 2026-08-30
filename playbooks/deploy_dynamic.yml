@@ -6,12 +6,16 @@
   hosts: localhost
   gather_facts: false
 
+  vars_files:
+    - ../vars/semaphore_env.yml
+
   tasks:
     - name: Validate that vm_ip was provided
       ansible.builtin.assert:
         that:
-          - vm_ip is defined
-          - vm_ip | string | trim | length > 0
-        fail_msg: "playbooks/deploy_dynamic.yml requires vm_ip. Use playbooks/deploy.yml for static inventory deployments."
+          - (vm_ip | default('') | string | trim | length) > 0
+        fail_msg: >-
+          playbooks/deploy_dynamic.yml requires vm_ip, from a survey field, the task environment JSON, or the
+          VM_IP Semaphore Environment variable. Use playbooks/deploy.yml for static inventory deployments.
 
 - ansible.builtin.import_playbook: deploy.yml

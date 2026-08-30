@@ -16,6 +16,7 @@ The shared flow is:
 - `playbooks/deploy_n8n.yml`: backward-compatible n8n-only wrapper, imports `deploy.yml`.
 - `roles/docker_host`: shared Docker host setup.
 - `roles/apps/n8n_queue`: n8n queue-mode deployment.
+- `vars/semaphore_env.yml`: maps Semaphore Environment variables to Ansible variables.
 - `vars/apps/n8n_queue.yml.example`: n8n-specific variable example.
 - `inventories/production/hosts.yml.example`: VM inventory example.
 
@@ -28,36 +29,131 @@ pip install -r requirements.txt
 
 `requirements.txt` is needed because the n8n role can generate a bcrypt hash from the Semaphore password field.
 
-## Semaphore Survey Fields
+## Where To Put Variables
 
-These are the fields the Semaphore task template sends. They match the backend form one-to-one.
+There is one canonical name per setting. No aliases.
 
-| Field | Variable | Required | Notes |
+| Source | Precedence | Use for |
+| --- | --- | --- |
+| The task `environment` JSON sent by the backend (also survey fields, `-e`) | highest | Values that change per deployment. |
+| Semaphore Environment > Environment Variables | middle | Stable config shared by every deployment. |
+| Role defaults in `roles/*/defaults/main.yml` | lowest | Values that rarely change at all. |
+
+Extra variables outrank environment variables, so anything the backend sends per run always wins. An empty or
+unset environment variable falls through to the default. The mapping lives in `vars/semaphore_env.yml`.
+
+Do not use Semaphore Environment > **Extra Variables** for anything the backend may need to override: that box
+is itself extra variables, so it sits at the same precedence as the payload.
+
+### Send from n8n per deployment
+
+These go in the task `environment` JSON when n8n calls the Semaphore API. They do not need to be declared as
+survey fields.
+
+| Variable | Type | Required | Notes |
 | --- | --- | --- | --- |
-| VM IP | `vm_ip` | yes | Target VM address. |
-| VM User | `vm_user` | yes | Normal user with sudo, e.g. `ubuntu`. `root` also works. |
-| VM Password | `vm_pass` | yes | SSH password. Also used as the sudo password. |
-| Application | `app_name` | yes | e.g. `n8n_queue`. |
-| Enable Basic Auth | `app_basic_auth` | yes | `true` provisions the n8n owner account. |
-| Domain Name | `app_domain` | no | Empty falls back to `http://<vm_ip>`. |
-| Timezone | `app_timezone` | yes | e.g. `Asia/Jakarta`. |
-| Admin Username | `app_username` | when basic auth | Owner email. |
-| Admin Password | `app_password` | when basic auth | Owner password. |
-| Clean Install | `app_clean_install` | yes | `true` wipes the stack and its volumes first. |
+| `vm_ip` | string | yes | Target VM address. |
+| `vm_user` | string | yes | Normal user with sudo, e.g. `ubuntu`. `root` also works. |
+| `vm_pass` | string | yes | SSH password, also used as the sudo password. |
+| `workload_type` | string | yes | `qemu` or `lxc`. |
+| `n8n_clean_install` | bool | yes | `true` removes the stack and its volumes first. |
+| `n8n_custom_domain` | bool | yes | `true` uses `n8n_domain`, `false` uses `n8n_generated_domain`. |
+| `n8n_domain` | string | when `n8n_custom_domain` is `true` | e.g. `n8n.ptrandri.id`. |
+| `n8n_generated_domain` | string | when `n8n_custom_domain` is `false` | e.g. `n8n-71bd257c0d.bataminfra.id`. |
+| `n8n_basic_auth_user` | string | for owner provisioning | Must be an email address. |
+| `n8n_basic_auth_password` | string | for owner provisioning | Owner password. |
 
-Mark `vm_pass` and `app_password` as sensitive in Semaphore.
+Customer domain:
 
-Older names are still accepted so existing templates keep working: `vm_password`, `app_admin_username`/`n8n_username`, `app_admin_password`/`n8n_password`, and `n8n_clean_install`.
+```json
+{
+  "workload_type": "qemu",
+  "n8n_clean_install": true,
+  "n8n_custom_domain": true,
+  "vm_ip": "192.168.50.10",
+  "vm_user": "ubuntu",
+  "vm_pass": "xxxxxxxx",
+  "n8n_basic_auth_user": "owner@ptrandri.id",
+  "n8n_basic_auth_password": "xxxxxxx!",
+  "n8n_domain": "n8n.ptrandri.id"
+}
+```
 
-Optional extra fields:
+Generated domain:
 
-| Variable | Purpose |
-| --- | --- |
-| `vm_port` | SSH port if not 22. |
-| `vm_become_password` | Sudo password when it differs from `vm_pass`. |
-| `vm_become` | Force privilege escalation on or off. |
-| `vm_ssh_private_key_b64` / `vm_ssh_private_key` / `vm_ssh_private_key_file` | Key auth instead of `vm_pass`. |
-| `vm_name` | Name of the generated host, default `dynamic-app-target`. |
+```json
+{
+  "workload_type": "qemu",
+  "n8n_clean_install": true,
+  "n8n_custom_domain": false,
+  "vm_ip": "192.168.50.10",
+  "vm_user": "ubuntu",
+  "vm_pass": "xxxxxxxx",
+  "n8n_basic_auth_user": "owner@bataminfra.id",
+  "n8n_basic_auth_password": "xxxxxxx",
+  "n8n_generated_domain": "n8n-71bd257c0d.bataminfra.id"
+}
+```
+
+Only the selected domain is read. The unused one can be omitted or sent empty.
+
+The owner account is provisioned when `n8n_basic_auth_user` and `n8n_basic_auth_password` are both non-empty.
+Omit them and the user completes email/password setup in the n8n UI.
+
+`n8n_basic_auth_user` must be an email address. n8n stores the instance owner as an email, so a plain name such
+as `admin` is expected to be rejected and would leave an instance nobody can log into. The playbook fails early
+with that message. Set `n8n_owner_email_strict: false` if you want to deploy a non-email owner anyway.
+
+### Key into the Semaphore Environment
+
+Everything below is optional and only needed to override a default.
+
+| Environment variable | Ansible variable | Default |
+| --- | --- | --- |
+| `VM_USER` | `vm_user` | `root` |
+| `VM_PORT` | `vm_port` | 22 |
+| `VM_BECOME_PASSWORD` | `vm_become_password` | falls back to `vm_pass` |
+| `VM_SSH_PRIVATE_KEY_B64` | `vm_ssh_private_key_b64` | empty |
+| `VM_SSH_PRIVATE_KEY_FILE` | `vm_ssh_private_key_file` | empty |
+| `WORKLOAD_TYPE` | `workload_type` | `qemu` |
+| `APP_NAME` | `app_name` | `n8n_queue` |
+| `N8N_TIMEZONE` | `n8n_timezone` | `Asia/Jakarta` |
+| `N8N_PUBLIC_PORT` | `n8n_public_port` | `5178` |
+| `N8N_IMAGE` | `n8n_image` | `docker.n8n.io/n8nio/n8n:2.27.4` |
+| `N8N_WORKER_CONCURRENCY` | `n8n_worker_concurrency` | `15` |
+| `N8N_OWNER_EMAIL_STRICT` | `n8n_owner_email_strict` | `true` |
+| `N8N_CLEAN_INSTALL` | `n8n_clean_install` | `false` |
+| `N8N_CUSTOM_DOMAIN` | `n8n_custom_domain` | `false` |
+| `N8N_DOMAIN` | `n8n_domain` | empty |
+| `N8N_GENERATED_DOMAIN` | `n8n_generated_domain` | empty |
+| `VM_IP` | `vm_ip` | empty |
+| `VM_PASS` | `vm_pass` | empty |
+| `N8N_BASIC_AUTH_USER` | `n8n_basic_auth_user` | empty |
+| `N8N_BASIC_AUTH_PASSWORD` | `n8n_basic_auth_password` | empty |
+
+A practical Environment is just the stable half:
+
+```json
+{
+  "VM_USER": "ubuntu",
+  "WORKLOAD_TYPE": "qemu",
+  "APP_NAME": "n8n_queue",
+  "N8N_TIMEZONE": "Asia/Jakarta"
+}
+```
+
+### Domain resolution
+
+`n8n_custom_domain` selects the source. A bare hostname becomes `https://<host>`; pass a full `http://...` URL
+to force plain HTTP. The selected domain is required, so a run cannot silently deploy to a wrong address.
+
+## Workload Type
+
+`workload_type` accepts `qemu` (also `kvm`, `vm`) and `lxc` (also `container`).
+
+Docker host setup is the same for both. The value is used for validation and for error reporting: if Docker
+fails to start on an `lxc` workload, the playbook says that the Proxmox container needs `nesting=1` and
+`keyctl=1`, which cannot be set from inside the container.
 
 ## Normal User With Sudo
 
@@ -83,8 +179,8 @@ Create an Ansible Playbook template in Semaphore with:
 - Repository: this repository.
 - Playbook path: `playbooks/deploy.yml`.
 - Inventory: a localhost inventory (the VM comes from the survey), or a static VM inventory.
-- Environment: one that has Ansible, Docker collection requirements, and Python dependencies installed.
-- Survey: the fields above.
+- Environment: the Environment holding the stable variables from "Where To Put Variables".
+- Survey: only the fields the backend does not send itself.
 
 Localhost inventory for survey-driven runs:
 
@@ -171,62 +267,27 @@ The matching public key must already exist on the VM in the target user's `~/.ss
 example `/home/ubuntu/.ssh/authorized_keys` when `vm_user` is `ubuntu`. A public key by itself cannot be used
 by Ansible to log in; Ansible needs the private key or a password.
 
-## Deploy n8n Queue Mode
+## Deploy n8n Queue Mode Locally
 
 ```bash
 cp vars/apps/n8n_queue.yml.example vars/apps/n8n_queue.yml
 ansible-playbook playbooks/deploy.yml -e @vars/apps/n8n_queue.yml
 ```
 
-Minimum vars:
-
-```yaml
-app_name: "n8n_queue"
-app_timezone: "Asia/Jakarta"
-app_basic_auth: false
-app_clean_install: false
-```
-
-With owner provisioning:
-
-```yaml
-app_basic_auth: true
-app_username: "owner@example.com"
-app_password: "strong-n8n-owner-password"
-```
-
-If `app_basic_auth` is `true`, the n8n owner account is provisioned from `app_username` and `app_password`.
-If it is `false`, the owner variables are not sent to n8n and the user sets up email/password manually in the
-n8n UI.
-
-`app_domain` is optional. If set to `n8n.example.com`, the role uses `https://n8n.example.com`. Pass
-`http://n8n.example.com` if HTTP is required. If left empty, the role uses `http://<vm_ip>` on the public port.
-
 Default public port is `5178`, mapped to container port `5678`.
 
 The default n8n image is pinned to `docker.n8n.io/n8nio/n8n:2.27.4` so owner provisioning from environment
-variables works. You can override it with `n8n_image`, but keep it on n8n v2.17.0 or newer if you want
-`app_username` and `app_password` to create/manage the owner account automatically.
+variables works. Override it with `n8n_image`, but keep it on n8n v2.17.0 or newer if you want
+`n8n_basic_auth_user` and `n8n_basic_auth_password` to create/manage the owner account automatically.
 
-Optional overrides:
+The role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key`
+automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env` on redeploy.
 
-```yaml
-n8n_public_port: 5178
-n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
-n8n_postgres_user: "n8n"
-n8n_postgres_password: "strong-postgres-password"
-n8n_redis_password: "strong-redis-password"
-n8n_encryption_key: "long-random-encryption-key"
-```
+Set `n8n_clean_install: true` only when you want a fresh deployment. It removes the existing n8n Compose stack
+and deletes the n8n, Postgres, and Redis named volumes before redeploying.
 
-The role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and
-`n8n_encryption_key` automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env`
-on redeploy.
-
-Set `app_clean_install: true` only when you want a fresh deployment. It removes the existing n8n Compose
-stack and deletes the n8n, Postgres, and Redis named volumes before redeploying.
-
-If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` instead of `app_password`.
+If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` instead of
+`n8n_basic_auth_password`.
 
 ## Adding Another App
 

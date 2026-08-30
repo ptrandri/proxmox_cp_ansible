@@ -35,6 +35,19 @@
     name: docker
     enabled: true
     state: started
+  register: docker_host_service_result
+  failed_when: false
+
+- name: Validate Docker service started
+  ansible.builtin.assert:
+    that:
+      - not (docker_host_service_result.failed | default(false))
+    fail_msg: >-
+      Docker could not be started on this {{ docker_host_workload_type | default('qemu') }} workload.
+      {% if (docker_host_workload_type | default('qemu')) in ['lxc', 'container'] %}
+      An LXC container needs nesting=1 and keyctl=1 set on the Proxmox host before Docker can run inside it.
+      {% endif %}
+      Service error: {{ docker_host_service_result.msg | default('unknown') }}
 
 - name: Create Docker Compose plugin directory
   ansible.builtin.file:

@@ -35,7 +35,7 @@ services:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_PROXY_HOPS=1
       - N8N_USER_MANAGEMENT_DISABLED=false
-{% if n8n_app_basic_auth_effective | bool %}
+{% if n8n_owner_provisioning_effective | bool %}
       - N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true
       - N8N_INSTANCE_OWNER_EMAIL=${N8N_INSTANCE_OWNER_EMAIL}
       - N8N_INSTANCE_OWNER_FIRST_NAME=${N8N_INSTANCE_OWNER_FIRST_NAME}
