@@ -1,101 +1,17 @@
 ---
-- name: Build dynamic deployment inventory
+# Dynamic entrypoint kept for backward compatibility.
+# playbooks/deploy.yml already handles both static inventories and dynamic vm_ip input,
+# so this wrapper only enforces that vm_ip was actually supplied.
+- name: Require dynamic VM input
   hosts: localhost
   gather_facts: false
 
-  vars:
-    dynamic_target_group: dynamic_app_servers
-    dynamic_target_name: "{{ vm_name | default('dynamic-app-target') }}"
-
   tasks:
-    - name: Validate dynamic VM input
+    - name: Validate that vm_ip was provided
       ansible.builtin.assert:
         that:
           - vm_ip is defined
           - vm_ip | string | trim | length > 0
-          - vm_user is defined
-          - vm_user | string | trim | length > 0
-          - vm_password is defined or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined or vm_ssh_private_key_b64 is defined
-        fail_msg: "Set vm_ip, vm_user, and one of: vm_password, vm_ssh_private_key_file, vm_ssh_private_key, or vm_ssh_private_key_b64."
+        fail_msg: "playbooks/deploy_dynamic.yml requires vm_ip. Use playbooks/deploy.yml for static inventory deployments."
 
-    - name: Create temporary SSH private key file from dynamic input
-      ansible.builtin.tempfile:
-        state: file
-        suffix: .pem
-      register: dynamic_ssh_private_key_file
-      when:
-        - (vm_ssh_private_key | default('') | string | trim | length > 0) or (vm_ssh_private_key_b64 | default('') | string | trim | length > 0)
-      no_log: true
-
-    - name: Write dynamic SSH private key
-      ansible.builtin.copy:
-        content: >-
-          {{
-            (
-              vm_ssh_private_key_b64 | b64decode
-              if (vm_ssh_private_key_b64 | default('') | string | trim | length > 0)
-              else (vm_ssh_private_key | string | replace('\\r\\n', '\n') | replace('\\n', '\n'))
-            ) ~ '\n'
-          }}
-        dest: "{{ dynamic_ssh_private_key_file.path }}"
-        mode: "0600"
-      when:
-        - dynamic_ssh_private_key_file is defined
-        - dynamic_ssh_private_key_file.path is defined
-      no_log: true
-
-    - name: Add VM from Semaphore input
-      ansible.builtin.add_host:
-        name: "{{ dynamic_target_name }}"
-        groups: "{{ dynamic_target_group }}"
-        ansible_host: "{{ vm_ip | string | trim }}"
-        ansible_user: "{{ vm_user | string | trim }}"
-        ansible_port: "{{ vm_port | default(omit) }}"
-        ansible_connection: ssh
-        ansible_password: "{{ vm_password | default(omit) }}"
-        ansible_become_password: "{{ vm_become_password | default(vm_password | default(omit)) }}"
-        ansible_ssh_private_key_file: "{{ dynamic_ssh_private_key_file.path | default(vm_ssh_private_key_file | default(omit)) }}"
-        ansible_ssh_common_args: "{{ vm_ssh_common_args | default('-o StrictHostKeyChecking=no -o IdentitiesOnly=yes') }}"
-        deploy_become: "{{ vm_become | default((vm_user | string | trim) != 'root') }}"
-      no_log: true
-
-- name: Deploy selected application to dynamic VM
-  hosts: dynamic_app_servers
-  become: "{{ deploy_become | default(true) }}"
-  gather_facts: true
-
-  vars:
-    supported_apps:
-      n8n: apps/n8n_queue
-      n8n_queue: apps/n8n_queue
-    app_aliases:
-      deploy_n8n: n8n_queue
-      n8n_queue_mode: n8n_queue
-
-  pre_tasks:
-    - name: Normalize selected app name
-      ansible.builtin.set_fact:
-        selected_app_name_raw: "{{ app_name | default(deploy_app | default(application | default('n8n_queue'))) | string | trim }}"
-
-    - name: Canonicalize selected app name
-      ansible.builtin.set_fact:
-        selected_app_name_normalized: "{{ selected_app_name_raw | lower | regex_replace('[^a-z0-9]+', '_') | regex_replace('^_+|_+$', '') }}"
-
-    - name: Resolve selected app alias
-      ansible.builtin.set_fact:
-        selected_app_name: "{{ app_aliases[selected_app_name_normalized] | default(selected_app_name_normalized) }}"
-
-    - name: Validate selected app
-      ansible.builtin.assert:
-        that:
-          - selected_app_name | length > 0
-          - selected_app_name in supported_apps
-        fail_msg: "Unsupported app_name '{{ selected_app_name_raw }}' resolved to '{{ selected_app_name }}'. Use one of: {{ supported_apps.keys() | list | join(', ') }}."
-
-  roles:
-    - role: docker_host
-
-  tasks:
-    - name: Deploy app role
-      ansible.builtin.include_role:
-        name: "{{ supported_apps[selected_app_name] }}"
+- ansible.builtin.import_playbook: deploy.yml

@@ -25,6 +25,7 @@
     name:
       - ca-certificates
       - curl
+      - sudo
       - docker.io
     state: present
     update_cache: true
@@ -54,3 +55,19 @@
 - name: Verify Docker Compose plugin
   ansible.builtin.command: docker compose version
   changed_when: false
+
+- name: Resolve deployment user for Docker group membership
+  ansible.builtin.set_fact:
+    docker_host_deploy_user: "{{ docker_host_user | default(deploy_remote_user | default(ansible_user | default(''))) | string | trim }}"
+
+- name: Allow the deployment user to run Docker without sudo
+  ansible.builtin.user:
+    name: "{{ docker_host_deploy_user }}"
+    groups: docker
+    append: true
+  when:
+    - docker_host_deploy_user | length > 0
+    - docker_host_deploy_user != 'root'
+
+- name: Reset connection so Docker group membership applies
+  ansible.builtin.meta: reset_connection

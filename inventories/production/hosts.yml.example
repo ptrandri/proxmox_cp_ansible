@@ -5,7 +5,11 @@ all:
       hosts:
         app-prod:
           ansible_host: "YOUR_VM_IP"
-          ansible_user: "root"
+          # Normal user with sudo rights. Use "root" only if the image has no sudo user.
+          ansible_user: "ubuntu"
           ansible_password: "YOUR_SSH_PASSWORD"
+          ansible_become: true
+          ansible_become_method: sudo
+          ansible_become_user: root
+          # Omit if the user has passwordless sudo.
           ansible_become_password: "YOUR_SUDO_PASSWORD"
-

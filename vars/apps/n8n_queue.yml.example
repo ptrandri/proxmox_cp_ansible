@@ -1,12 +1,17 @@
 ---
 app_name: "n8n_queue"
+
+# Optional. If left empty, the role falls back to http://<vm_ip>.
 app_domain: "n8n.example.com"
-app_timezone: "Asia/Singapore"
-app_basic_auth: false
+app_timezone: "Asia/Jakarta"
+app_basic_auth: true
 
 # Required only when app_basic_auth is true.
-app_admin_username: "owner@example.com"
-app_admin_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
+app_username: "owner@example.com"
+app_password: "CHANGE_ME_N8N_OWNER_PASSWORD"
+
+# Set to true only for a fresh deployment. It removes the stack and its volumes.
+app_clean_install: false
 
 # Optional. If omitted, the role generates and persists these in /opt/n8n/.env.
 # n8n_postgres_user: "n8n"
@@ -18,4 +23,3 @@ n8n_project_dir: "/opt/n8n"
 n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
 n8n_worker_concurrency: 15
 n8n_public_port: 5178
-n8n_clean_install: false

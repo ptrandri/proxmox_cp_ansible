@@ -8,13 +8,24 @@
     dynamic_target_name: "{{ vm_name | default('dynamic-app-target') }}"
 
   tasks:
+    - name: Normalize dynamic VM credential input
+      ansible.builtin.set_fact:
+        vm_ssh_password_effective: "{{ vm_password | default(vm_pass | default('')) | string }}"
+        vm_sudo_password_effective: >-
+          {{
+            vm_become_password
+            | default(vm_sudo_pass | default(vm_sudo_password | default(vm_password | default(vm_pass | default('')))))
+            | string
+          }}
+        vm_user_effective: "{{ vm_user | default('') | string | trim }}"
+      no_log: true
+
     - name: Validate dynamic VM input
       ansible.builtin.assert:
         that:
-          - vm_user is defined
-          - vm_user | string | trim | length > 0
-          - vm_password is defined or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined or vm_ssh_private_key_b64 is defined
-        fail_msg: "When vm_ip is provided, also set vm_user and one of: vm_password, vm_ssh_private_key_file, vm_ssh_private_key, or vm_ssh_private_key_b64."
+          - vm_user_effective | length > 0
+          - (vm_ssh_password_effective | length > 0) or vm_ssh_private_key_file is defined or vm_ssh_private_key is defined or vm_ssh_private_key_b64 is defined
+        fail_msg: "When vm_ip is provided, also set vm_user and one of: vm_pass, vm_password, vm_ssh_private_key_file, vm_ssh_private_key, or vm_ssh_private_key_b64."
       when: vm_ip is defined and (vm_ip | string | trim | length > 0)
 
     - name: Create temporary SSH private key file from dynamic input
@@ -49,20 +60,24 @@
         name: "{{ dynamic_target_name }}"
         groups: "{{ dynamic_target_group }}"
         ansible_host: "{{ vm_ip | string | trim }}"
-        ansible_user: "{{ vm_user | string | trim }}"
+        ansible_user: "{{ vm_user_effective }}"
         ansible_port: "{{ vm_port | default(omit) }}"
         ansible_connection: ssh
-        ansible_password: "{{ vm_password | default(omit) }}"
-        ansible_become_password: "{{ vm_become_password | default(vm_password | default(omit)) }}"
+        ansible_password: "{{ vm_ssh_password_effective | default(omit, true) }}"
+        ansible_become_password: "{{ vm_sudo_password_effective | default(omit, true) }}"
         ansible_ssh_private_key_file: "{{ dynamic_ssh_private_key_file.path | default(vm_ssh_private_key_file | default(omit)) }}"
         ansible_ssh_common_args: "{{ vm_ssh_common_args | default('-o StrictHostKeyChecking=no -o IdentitiesOnly=yes') }}"
-        deploy_become: "{{ vm_become | default((vm_user | string | trim) != 'root') }}"
+        deploy_become: "{{ vm_become | default(vm_user_effective != 'root') }}"
+        deploy_become_method: "{{ vm_become_method | default('sudo') }}"
+        deploy_remote_user: "{{ vm_user_effective }}"
       when: vm_ip is defined and (vm_ip | string | trim | length > 0)
       no_log: true
 
 - name: Deploy selected application
   hosts: "{{ 'dynamic_app_servers' if (vm_ip is defined and (vm_ip | string | trim | length > 0)) else (target_hosts | default('all')) }}"
   become: "{{ deploy_become | default(true) }}"
+  become_method: "{{ deploy_become_method | default('sudo') }}"
+  become_user: root
   gather_facts: true
 
   vars:
@@ -74,6 +89,22 @@
       n8n_queue_mode: n8n_queue
 
   pre_tasks:
+    - name: Check privilege escalation for the deployment user
+      ansible.builtin.command: id -u
+      register: deploy_privilege_check
+      changed_when: false
+      failed_when: false
+
+    - name: Validate privilege escalation for the deployment user
+      ansible.builtin.assert:
+        that:
+          - deploy_privilege_check.rc == 0
+          - (deploy_privilege_check.stdout | default('') | trim) == '0'
+        fail_msg: >-
+          User '{{ deploy_remote_user | default(ansible_user | default('unknown')) }}' could not become root on this VM.
+          Give the user passwordless sudo, or pass its sudo password as vm_pass (or vm_become_password if it differs
+          from the SSH password).
+
     - name: Normalize selected app name
       ansible.builtin.set_fact:
         selected_app_name_raw: "{{ app_name | default(deploy_app | default(application | default('n8n_queue'))) | string | trim }}"

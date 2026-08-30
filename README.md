@@ -4,16 +4,16 @@ This repository is structured for deploying multiple Docker Compose based apps t
 
 The shared flow is:
 
-1. Semaphore passes VM SSH details through inventory.
-2. `roles/docker_host` prepares Docker and Docker Compose on the VM.
-3. `playbooks/deploy.yml` reads `app_name`.
+1. Semaphore passes VM SSH details through a survey (or through inventory).
+2. `playbooks/deploy.yml` builds the target host and reads `app_name`.
+3. `roles/docker_host` prepares Docker and Docker Compose on the VM.
 4. The selected app role deploys its own templates, secrets, volumes, and compose stack.
 
 ## Structure
 
-- `playbooks/deploy.yml`: generic Semaphore entrypoint for all apps.
-- `playbooks/deploy_dynamic.yml`: generic entrypoint when `vm_ip` comes from a Semaphore survey/webhook.
-- `playbooks/deploy_n8n.yml`: backward-compatible n8n-only wrapper.
+- `playbooks/deploy.yml`: the single entrypoint for all apps, static inventory or dynamic `vm_ip`.
+- `playbooks/deploy_dynamic.yml`: wrapper that requires `vm_ip`, then imports `deploy.yml`.
+- `playbooks/deploy_n8n.yml`: backward-compatible n8n-only wrapper, imports `deploy.yml`.
 - `roles/docker_host`: shared Docker host setup.
 - `roles/apps/n8n_queue`: n8n queue-mode deployment.
 - `vars/apps/n8n_queue.yml.example`: n8n-specific variable example.
@@ -28,12 +28,100 @@ pip install -r requirements.txt
 
 `requirements.txt` is needed because the n8n role can generate a bcrypt hash from the Semaphore password field.
 
-## Inventory
+## Semaphore Survey Fields
 
-Create a local inventory:
+These are the fields the Semaphore task template sends. They match the backend form one-to-one.
+
+| Field | Variable | Required | Notes |
+| --- | --- | --- | --- |
+| VM IP | `vm_ip` | yes | Target VM address. |
+| VM User | `vm_user` | yes | Normal user with sudo, e.g. `ubuntu`. `root` also works. |
+| VM Password | `vm_pass` | yes | SSH password. Also used as the sudo password. |
+| Application | `app_name` | yes | e.g. `n8n_queue`. |
+| Enable Basic Auth | `app_basic_auth` | yes | `true` provisions the n8n owner account. |
+| Domain Name | `app_domain` | no | Empty falls back to `http://<vm_ip>`. |
+| Timezone | `app_timezone` | yes | e.g. `Asia/Jakarta`. |
+| Admin Username | `app_username` | when basic auth | Owner email. |
+| Admin Password | `app_password` | when basic auth | Owner password. |
+| Clean Install | `app_clean_install` | yes | `true` wipes the stack and its volumes first. |
+
+Mark `vm_pass` and `app_password` as sensitive in Semaphore.
+
+Older names are still accepted so existing templates keep working: `vm_password`, `app_admin_username`/`n8n_username`, `app_admin_password`/`n8n_password`, and `n8n_clean_install`.
+
+Optional extra fields:
+
+| Variable | Purpose |
+| --- | --- |
+| `vm_port` | SSH port if not 22. |
+| `vm_become_password` | Sudo password when it differs from `vm_pass`. |
+| `vm_become` | Force privilege escalation on or off. |
+| `vm_ssh_private_key_b64` / `vm_ssh_private_key` / `vm_ssh_private_key_file` | Key auth instead of `vm_pass`. |
+| `vm_name` | Name of the generated host, default `dynamic-app-target`. |
+
+## Normal User With Sudo
+
+`vm_user` is expected to be a normal user (for example `ubuntu`) that can escalate to root:
+
+- Privilege escalation is enabled automatically whenever `vm_user` is not `root`, using `sudo` to `root`.
+- The sudo password defaults to `vm_pass`. Set `vm_become_password` only when the sudo password differs.
+  Passwordless sudo (`NOPASSWD`) also works.
+- `roles/docker_host` adds `vm_user` to the `docker` group, so the user can run `docker` and
+  `docker compose` on the VM afterwards without sudo.
+- Before any deployment task runs, the playbook checks that the user really reaches uid 0 and fails
+  with a clear message if sudo is missing or the password is wrong.
+
+If `vm_user` is `root`, escalation is skipped automatically, because many minimal images do not ship `sudo`.
+
+The error `/bin/sh: sudo: not found` means the target user is root on a minimal image, or Semaphore
+ran the localhost inventory instead of the dynamic VM. Make sure `vm_ip` is passed.
+
+## Semaphore Template Setup
+
+Create an Ansible Playbook template in Semaphore with:
+
+- Repository: this repository.
+- Playbook path: `playbooks/deploy.yml`.
+- Inventory: a localhost inventory (the VM comes from the survey), or a static VM inventory.
+- Environment: one that has Ansible, Docker collection requirements, and Python dependencies installed.
+- Survey: the fields above.
+
+Localhost inventory for survey-driven runs:
+
+```yaml
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+```
+
+`playbooks/deploy.yml` targets `hosts: all` for static inventories. If `vm_ip` is provided, it switches to
+dynamic mode, creates the target host with `add_host`, and deploys to that VM instead of localhost.
+
+Do not create self-referencing extra vars like `vm_ip: "{{ vm_ip }}"` unless your Semaphore webhook template
+explicitly renders placeholders before Ansible runs.
+
+## Static Inventory
 
 ```bash
 cp inventories/production/hosts.yml.example inventories/production/hosts.yml
+```
+
+Password example with a normal sudo user:
+
+```yaml
+all:
+  children:
+    app_servers:
+      hosts:
+        app-prod:
+          ansible_host: "1.2.3.4"
+          ansible_user: "ubuntu"
+          ansible_password: "YOUR_SSH_PASSWORD"
+          ansible_become: true
+          ansible_become_method: sudo
+          ansible_become_user: root
+          ansible_become_password: "YOUR_SUDO_PASSWORD"
 ```
 
 SSH key example:
@@ -47,107 +135,12 @@ all:
           ansible_host: "1.2.3.4"
           ansible_user: "ubuntu"
           ansible_ssh_private_key_file: "~/.ssh/id_rsa"
+          ansible_become: true
 ```
 
-Password example:
+## SSH Key From A Semaphore Field
 
-```yaml
-all:
-  children:
-    app_servers:
-      hosts:
-        app-prod:
-          ansible_host: "1.2.3.4"
-          ansible_user: "root"
-          ansible_password: "YOUR_SSH_PASSWORD"
-          ansible_become_password: "YOUR_SUDO_PASSWORD"
-```
-
-## Generic Semaphore Fields
-
-Use these common fields for every app:
-
-| Label | Variable | Type | Required |
-| --- | --- | --- | --- |
-| Application | `app_name` | select | yes |
-| Domain Name | `app_domain` | text | yes |
-| Enable Basic Auth | `app_basic_auth` | switch | yes |
-| Admin Username | `app_admin_username` | text/email | app-dependent |
-| Admin Password | `app_admin_password` | generated password / sensitive | app-dependent |
-| Timezone | `app_timezone` | select | yes |
-
-For n8n, set `app_name` to `n8n_queue`. The playbook also accepts common labels such as `n8n`, `N8N Queue`, `n8n-queue`, and `deploy_n8n`.
-
-The n8n role also accepts the older aliases `n8n_username` and `n8n_password`, but `app_admin_username` and `app_admin_password` are preferred for multi-app automation.
-
-## Semaphore Template Setup
-
-Create an Ansible Playbook template in Semaphore with:
-
-- Repository: this repository.
-- Playbook path: `playbooks/deploy.yml`.
-- Inventory: a Semaphore inventory containing the target VM.
-- Environment: one that has Ansible, Docker collection requirements, and Python dependencies installed.
-- Survey/Extra Variables: the generic fields above plus app-specific secrets.
-
-`playbooks/deploy.yml` targets `hosts: all` by default for static inventories. If `vm_ip` is provided, it switches to dynamic mode, creates the target host with `add_host`, and deploys to that VM instead of localhost.
-
-## Dynamic VM IP From Semaphore
-
-If `vm_ip` is dynamic, use `playbooks/deploy.yml` or `playbooks/deploy_dynamic.yml`. The generic `deploy.yml` now supports both static inventory and dynamic VM input.
-
-In Semaphore, create a simple localhost inventory:
-
-```yaml
-all:
-  hosts:
-    localhost:
-      ansible_connection: local
-```
-
-Then create a task template with:
-
-- Playbook path: `playbooks/deploy_dynamic.yml`
-- Inventory: the localhost inventory above
-- Survey/Webhook fields:
-  - `vm_ip`
-  - `vm_user`
-  - `vm_port` if SSH is not on port 22
-  - `vm_password`, `vm_ssh_private_key_b64`, `vm_ssh_private_key`, or `vm_ssh_private_key_file`
-  - `vm_become_password` if sudo password is different
-  - `app_name`
-  - `app_domain`
-  - `app_timezone`
-  - `app_basic_auth`
-  - app-specific variables
-
-If these are Semaphore survey fields, Semaphore passes them to Ansible automatically. Do not create self-referencing extra vars like `vm_ip: "{{ vm_ip }}"` unless your Semaphore webhook template explicitly renders placeholders before Ansible runs.
-
-For n8n, the resulting variables should be equivalent to:
-
-```yaml
-app_name: "n8n_queue"
-vm_ip: "1.2.3.4"
-vm_user: "root"
-vm_password: "ssh-password"
-vm_become_password: "sudo-password"
-
-app_domain: "n8n.example.com"
-app_timezone: "Asia/Singapore"
-app_basic_auth: true
-app_admin_username: "owner@example.com"
-app_admin_password: "n8n-owner-password"
-```
-
-If `app_basic_auth` is `true`, n8n owner account is provisioned from `app_admin_username` and `app_admin_password`. If it is `false`, the owner variables are not sent to n8n and the user sets up email/password manually in the n8n UI.
-
-The n8n role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key` automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env` on redeploy.
-
-If Semaphore still asks for `n8n_postgres_password`, `n8n_redis_password`, and `n8n_encryption_key` as required values, it is running an older Git commit. Push the latest repository changes and rerun the task.
-
-Mark password fields as sensitive in Semaphore. The playbook uses `add_host` to create the target VM at runtime, then deploys to that generated host.
-
-For SSH key authentication from a single-line Semaphore field, use base64. Add a sensitive field named:
+For a single-line field, use base64:
 
 ```yaml
 vm_ssh_private_key_b64: "ONE_LINE_BASE64_PRIVATE_KEY"
@@ -165,102 +158,75 @@ If `-w` is not supported:
 base64 ~/.ssh/id_ed25519 | tr -d '\n'
 ```
 
-Generate it on Windows PowerShell:
+On Windows PowerShell:
 
 ```powershell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.ssh\id_ed25519"))
 ```
 
-Then paste the output into the one-line Semaphore field `vm_ssh_private_key_b64`.
+If Semaphore gives you a multi-line textarea, use `vm_ssh_private_key` instead. If Semaphore stores the key
+as a file on the runner, pass `vm_ssh_private_key_file`.
 
-If Semaphore gives you a multi-line textarea, you can also use:
-
-```yaml
-vm_ssh_private_key: |
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  ...
-  -----END OPENSSH PRIVATE KEY-----
-```
-
-The matching public key must already exist on the VM in the target user's `~/.ssh/authorized_keys`. For example, if `vm_user` is `root`, the public key must be in `/root/.ssh/authorized_keys`. A public key by itself cannot be used by Ansible to log in; Ansible needs the private key or a password.
-
-If Semaphore stores the private key as a file on the runner instead, pass:
-
-```yaml
-vm_ssh_private_key_file: "/path/to/private_key"
-```
-
-If `vm_user` is `root`, the dynamic playbook disables sudo automatically because many minimal VM images do not include `sudo`. For non-root users, it uses sudo by default. You can override this with:
-
-```yaml
-vm_become: false
-```
-
-The error `/bin/sh: sudo: not found` usually means Semaphore ran the static inventory localhost instead of the dynamic VM, or the target user is root on a minimal image. Make sure `vm_ip` is passed and use the dynamic fields above.
+The matching public key must already exist on the VM in the target user's `~/.ssh/authorized_keys`, for
+example `/home/ubuntu/.ssh/authorized_keys` when `vm_user` is `ubuntu`. A public key by itself cannot be used
+by Ansible to log in; Ansible needs the private key or a password.
 
 ## Deploy n8n Queue Mode
 
-Create vars:
-
 ```bash
 cp vars/apps/n8n_queue.yml.example vars/apps/n8n_queue.yml
+ansible-playbook playbooks/deploy.yml -e @vars/apps/n8n_queue.yml
 ```
 
 Minimum vars:
 
 ```yaml
 app_name: "n8n_queue"
-app_domain: "n8n.example.com"
-app_timezone: "Asia/Singapore"
+app_timezone: "Asia/Jakarta"
 app_basic_auth: false
+app_clean_install: false
 ```
 
-If you want Ansible to provision the n8n owner account:
+With owner provisioning:
 
 ```yaml
 app_basic_auth: true
-app_admin_username: "owner@example.com"
-app_admin_password: "strong-n8n-owner-password"
+app_username: "owner@example.com"
+app_password: "strong-n8n-owner-password"
 ```
+
+If `app_basic_auth` is `true`, the n8n owner account is provisioned from `app_username` and `app_password`.
+If it is `false`, the owner variables are not sent to n8n and the user sets up email/password manually in the
+n8n UI.
+
+`app_domain` is optional. If set to `n8n.example.com`, the role uses `https://n8n.example.com`. Pass
+`http://n8n.example.com` if HTTP is required. If left empty, the role uses `http://<vm_ip>` on the public port.
 
 Default public port is `5178`, mapped to container port `5678`.
 
-The default n8n image is pinned to `docker.n8n.io/n8nio/n8n:2.27.4` so owner provisioning from environment variables works. You can override it with `n8n_image`, but keep it on n8n v2.17.0 or newer if you want `app_admin_username` and `app_admin_password` to create/manage the owner account automatically.
+The default n8n image is pinned to `docker.n8n.io/n8nio/n8n:2.27.4` so owner provisioning from environment
+variables works. You can override it with `n8n_image`, but keep it on n8n v2.17.0 or newer if you want
+`app_username` and `app_password` to create/manage the owner account automatically.
 
 Optional overrides:
 
 ```yaml
 n8n_public_port: 5178
 n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
-n8n_clean_install: false
 n8n_postgres_user: "n8n"
 n8n_postgres_password: "strong-postgres-password"
 n8n_redis_password: "strong-redis-password"
 n8n_encryption_key: "long-random-encryption-key"
 ```
 
-Set `n8n_clean_install: true` only when you want a fresh deployment. It removes the existing n8n Compose stack and deletes the n8n, Postgres, and Redis named volumes before redeploying.
+The role generates `n8n_postgres_user`, `n8n_postgres_password`, `n8n_redis_password`, and
+`n8n_encryption_key` automatically if you do not pass them. Existing values are reused from `/opt/n8n/.env`
+on redeploy.
 
-Run:
+Set `app_clean_install: true` only when you want a fresh deployment. It removes the existing n8n Compose
+stack and deletes the n8n, Postgres, and Redis named volumes before redeploying.
 
-```bash
-ansible-playbook playbooks/deploy.yml -e @vars/apps/n8n_queue.yml
-```
-
-If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` instead of `app_admin_password`.
-
-## Semaphore Extra Vars For n8n
-
-```yaml
-app_name: "{{ app_name }}"
-app_domain: "{{ app_domain }}"
-app_timezone: "{{ app_timezone }}"
-app_basic_auth: "{{ app_basic_auth }}"
-app_admin_username: "{{ app_admin_username }}"
-app_admin_password: "{{ app_admin_password }}"
-```
-
-If `app_domain` is `n8n.example.com`, the role uses `https://n8n.example.com`. If HTTP is required, pass `http://n8n.example.com`.
+If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` instead of `app_password`.
 
 ## Adding Another App
 
