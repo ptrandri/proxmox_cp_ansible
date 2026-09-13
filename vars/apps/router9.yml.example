@@ -1,0 +1,27 @@
+---
+# 9router. Variables are router9_* because an Ansible variable cannot start with a digit.
+app_name: "9router"
+workload_type: "qemu"
+
+vm_ip: "192.168.50.10"
+vm_user: "ubuntu"
+vm_pass: "CHANGE_ME_SSH_PASSWORD"
+
+router9_timezone: "Asia/Jakarta"
+router9_clean_install: false
+
+# true  -> router9_domain is used
+# false -> router9_generated_domain is used
+router9_custom_domain: false
+router9_domain: ""
+router9_generated_domain: "9router-71bd257c0d.bataminfra.id"
+
+# First-login password for the admin account. Required.
+router9_initial_password: "CHANGE_ME_INITIAL_PASSWORD"
+
+# Optional. Generated and persisted in /opt/9router/.generated-secrets.yml when omitted.
+# router9_jwt_secret: "long-random-jwt-secret"
+# router9_api_key_secret: "long-random-api-key-secret"
+
+router9_image: "decolua/9router:latest"
+router9_public_port: 20128

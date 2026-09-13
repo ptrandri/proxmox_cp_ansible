@@ -1,0 +1,73 @@
+---
+- name: Resolve shared application input
+  ansible.builtin.include_role:
+    name: app_common
+
+- name: Load stored generated secrets
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: load_secrets
+
+- name: Validate 9router input
+  ansible.builtin.assert:
+    that:
+      - (router9_initial_password | default('', true) | string | length) > 0
+    fail_msg: "Set router9_initial_password to the first-login password for the 9router admin account."
+
+- name: Generate 9router secret candidates
+  ansible.builtin.set_fact:
+    router9_generated_jwt_secret: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=48) }}"
+    router9_generated_api_key_secret: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}"
+  no_log: true
+
+- name: Resolve 9router secrets
+  ansible.builtin.set_fact:
+    app_generated_secrets:
+      JWT_SECRET: >-
+        {{
+          router9_jwt_secret
+          | default(app_stored_secrets.JWT_SECRET | default(''), true)
+          | default(router9_generated_jwt_secret, true)
+        }}
+      API_KEY_SECRET: >-
+        {{
+          router9_api_key_secret
+          | default(app_stored_secrets.API_KEY_SECRET | default(''), true)
+          | default(router9_generated_api_key_secret, true)
+        }}
+  no_log: true
+
+- name: Create 9router project directory
+  ansible.builtin.file:
+    path: "{{ app_project_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render 9router Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ app_project_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render 9router environment file
+  ansible.builtin.template:
+    src: router9.env.j2
+    dest: "{{ app_project_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Persist generated secrets
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: save_secrets
+
+- name: Deploy 9router stack
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: deploy

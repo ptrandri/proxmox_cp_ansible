@@ -11,14 +11,14 @@ The shared flow is:
 
 ## Structure
 
-- `playbooks/deploy.yml`: the single entrypoint for all apps, static inventory or dynamic `vm_ip`.
-- `playbooks/deploy_dynamic.yml`: wrapper that requires `vm_ip`, then imports `deploy.yml`.
-- `playbooks/deploy_n8n.yml`: backward-compatible n8n-only wrapper, imports `deploy.yml`.
+- `playbooks/deploy.yml`: the single entrypoint for every app.
 - `roles/docker_host`: shared Docker host setup.
+- `roles/app_common`: shared domain/timezone/clean-install resolution, deploy, health gate, diagnostics.
 - `roles/apps/n8n_queue`: n8n queue-mode deployment.
+- `roles/apps/openclaw`: openclaw deployment.
+- `roles/apps/router9`: 9router deployment.
 - `vars/semaphore_env.yml`: maps Semaphore Environment variables to Ansible variables.
-- `vars/apps/n8n_queue.yml.example`: n8n-specific variable example.
-- `inventories/production/hosts.yml.example`: VM inventory example.
+- `vars/apps/*.yml.example`: per-app variable examples for local runs.
 
 ## Install Requirements
 
@@ -50,18 +50,32 @@ is itself extra variables, so it sits at the same precedence as the payload.
 These go in the task `environment` JSON when n8n calls the Semaphore API. They do not need to be declared as
 survey fields.
 
+Every app shares the same connection and domain contract, differing only in the `<prefix>` and in its own
+app-specific fields.
+
 | Variable | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `vm_ip` | string | yes | Target VM address. |
 | `vm_user` | string | yes | Normal user with sudo, e.g. `ubuntu`. `root` also works. |
 | `vm_pass` | string | yes | SSH password, also used as the sudo password. |
 | `workload_type` | string | yes | `qemu` or `lxc`. |
-| `n8n_clean_install` | bool | yes | `true` removes the stack and its volumes first. |
-| `n8n_custom_domain` | bool | yes | `true` uses `n8n_domain`, `false` uses `n8n_generated_domain`. |
-| `n8n_domain` | string | when `n8n_custom_domain` is `true` | e.g. `n8n.ptrandri.id`. |
-| `n8n_generated_domain` | string | when `n8n_custom_domain` is `false` | e.g. `n8n-71bd257c0d.bataminfra.id`. |
-| `n8n_basic_auth_user` | string | for owner provisioning | Must be an email address. |
-| `n8n_basic_auth_password` | string | for owner provisioning | Owner password. |
+| `app_name` | string | yes | `n8n_queue`, `openclaw`, or `9router`. No default - a missing value fails. |
+| `<prefix>_clean_install` | bool | yes | `true` removes the stack and its volumes first. |
+| `<prefix>_custom_domain` | bool | yes | `true` uses `<prefix>_domain`, `false` uses `<prefix>_generated_domain`. |
+| `<prefix>_domain` | string | when `<prefix>_custom_domain` is `true` | e.g. `n8n.ptrandri.id`. |
+| `<prefix>_generated_domain` | string | when `<prefix>_custom_domain` is `false` | e.g. `n8n-71bd257c0d.bataminfra.id`. |
+| `<prefix>_timezone` | string | no | Defaults to `Asia/Jakarta`. |
+
+The prefix per app, and the app-specific fields on top of the shared contract:
+
+| `app_name` | Prefix | Port | App-specific fields |
+| --- | --- | --- | --- |
+| `n8n_queue` | `n8n` | 5178 | `n8n_basic_auth_user` (email, required for owner provisioning), `n8n_basic_auth_password` |
+| `openclaw` | `openclaw` | 18789 | `openclaw_gateway_token` (optional, generated when omitted) |
+| `9router` | `router9` | 20128 | `router9_initial_password` (required), `router9_jwt_secret` and `router9_api_key_secret` (optional, generated when omitted) |
+
+**9router uses the `router9_` prefix, not `9router_`**, because an Ansible variable cannot start with a digit.
+`app_name` still accepts `9router`. The marketplace `input_schema` keys must use `router9_`.
 
 Customer domain:
 
@@ -106,30 +120,21 @@ with that message. Set `n8n_owner_email_strict: false` if you want to deploy a n
 
 ### Key into the Semaphore Environment
 
-Everything below is optional and only needed to override a default.
+Everything below is optional and only needed to override a default. Every payload variable also has an
+environment form if you want a static default for it.
 
 | Environment variable | Ansible variable | Default |
 | --- | --- | --- |
 | `VM_USER` | `vm_user` | `root` |
 | `VM_PORT` | `vm_port` | 22 |
 | `VM_BECOME_PASSWORD` | `vm_become_password` | falls back to `vm_pass` |
-| `VM_SSH_PRIVATE_KEY_B64` | `vm_ssh_private_key_b64` | empty |
-| `VM_SSH_PRIVATE_KEY_FILE` | `vm_ssh_private_key_file` | empty |
+| `VM_SSH_PRIVATE_KEY_B64` / `VM_SSH_PRIVATE_KEY_FILE` | key auth | empty |
 | `WORKLOAD_TYPE` | `workload_type` | `qemu` |
-| `APP_NAME` | `app_name` | `n8n_queue` |
-| `N8N_TIMEZONE` | `n8n_timezone` | `Asia/Jakarta` |
-| `N8N_PUBLIC_PORT` | `n8n_public_port` | `5178` |
-| `N8N_IMAGE` | `n8n_image` | `docker.n8n.io/n8nio/n8n:2.27.4` |
+| `N8N_TIMEZONE` / `OPENCLAW_TIMEZONE` / `ROUTER9_TIMEZONE` | `<prefix>_timezone` | `Asia/Jakarta` |
+| `N8N_PUBLIC_PORT` / `OPENCLAW_PUBLIC_PORT` / `ROUTER9_PUBLIC_PORT` | `<prefix>_public_port` | 5178 / 18789 / 20128 |
+| `N8N_IMAGE` / `OPENCLAW_IMAGE` / `ROUTER9_IMAGE` | `<prefix>_image` | pinned n8n, `openclaw:latest`, `9router:latest` |
 | `N8N_WORKER_CONCURRENCY` | `n8n_worker_concurrency` | `15` |
 | `N8N_OWNER_EMAIL_STRICT` | `n8n_owner_email_strict` | `true` |
-| `N8N_CLEAN_INSTALL` | `n8n_clean_install` | `false` |
-| `N8N_CUSTOM_DOMAIN` | `n8n_custom_domain` | `false` |
-| `N8N_DOMAIN` | `n8n_domain` | empty |
-| `N8N_GENERATED_DOMAIN` | `n8n_generated_domain` | empty |
-| `VM_IP` | `vm_ip` | empty |
-| `VM_PASS` | `vm_pass` | empty |
-| `N8N_BASIC_AUTH_USER` | `n8n_basic_auth_user` | empty |
-| `N8N_BASIC_AUTH_PASSWORD` | `n8n_basic_auth_password` | empty |
 
 A practical Environment is just the stable half:
 
@@ -137,10 +142,14 @@ A practical Environment is just the stable half:
 {
   "VM_USER": "ubuntu",
   "WORKLOAD_TYPE": "qemu",
-  "APP_NAME": "n8n_queue",
-  "N8N_TIMEZONE": "Asia/Jakarta"
+  "N8N_TIMEZONE": "Asia/Jakarta",
+  "OPENCLAW_TIMEZONE": "Asia/Jakarta",
+  "ROUTER9_TIMEZONE": "Asia/Jakarta"
 }
 ```
+
+`APP_NAME` is deliberately absent and has no default anywhere. One template serves every app, so a payload
+without `app_name` fails with "app_name is required" instead of quietly installing n8n.
 
 ### Domain resolution
 
@@ -178,7 +187,7 @@ Create an Ansible Playbook template in Semaphore with:
 
 - Repository: this repository.
 - Playbook path: `playbooks/deploy.yml`.
-- Inventory: a localhost inventory (the VM comes from the survey), or a static VM inventory.
+- Inventory: a localhost inventory. The target VM always comes from `vm_ip`.
 - Environment: the Environment holding the stable variables from "Where To Put Variables".
 - Survey: only the fields the backend does not send itself.
 
@@ -191,48 +200,11 @@ all:
       ansible_connection: local
 ```
 
-`playbooks/deploy.yml` targets `hosts: all` for static inventories. If `vm_ip` is provided, it switches to
-dynamic mode, creates the target host with `add_host`, and deploys to that VM instead of localhost.
+`playbooks/deploy.yml` builds the target host from `vm_ip` with `add_host` and deploys to it. `vm_ip`,
+`vm_user`, and a credential are required; the playbook fails immediately if any is missing.
 
 Do not create self-referencing extra vars like `vm_ip: "{{ vm_ip }}"` unless your Semaphore webhook template
 explicitly renders placeholders before Ansible runs.
-
-## Static Inventory
-
-```bash
-cp inventories/production/hosts.yml.example inventories/production/hosts.yml
-```
-
-Password example with a normal sudo user:
-
-```yaml
-all:
-  children:
-    app_servers:
-      hosts:
-        app-prod:
-          ansible_host: "1.2.3.4"
-          ansible_user: "ubuntu"
-          ansible_password: "YOUR_SSH_PASSWORD"
-          ansible_become: true
-          ansible_become_method: sudo
-          ansible_become_user: root
-          ansible_become_password: "YOUR_SUDO_PASSWORD"
-```
-
-SSH key example:
-
-```yaml
-all:
-  children:
-    app_servers:
-      hosts:
-        app-prod:
-          ansible_host: "1.2.3.4"
-          ansible_user: "ubuntu"
-          ansible_ssh_private_key_file: "~/.ssh/id_rsa"
-          ansible_become: true
-```
 
 ## SSH Key From A Semaphore Field
 
@@ -267,12 +239,20 @@ The matching public key must already exist on the VM in the target user's `~/.ss
 example `/home/ubuntu/.ssh/authorized_keys` when `vm_user` is `ubuntu`. A public key by itself cannot be used
 by Ansible to log in; Ansible needs the private key or a password.
 
-## Deploy n8n Queue Mode Locally
+## Deploy Locally
 
 ```bash
 cp vars/apps/n8n_queue.yml.example vars/apps/n8n_queue.yml
 ansible-playbook playbooks/deploy.yml -e @vars/apps/n8n_queue.yml
+
+cp vars/apps/openclaw.yml.example vars/apps/openclaw.yml
+ansible-playbook playbooks/deploy.yml -e @vars/apps/openclaw.yml
+
+cp vars/apps/router9.yml.example vars/apps/router9.yml
+ansible-playbook playbooks/deploy.yml -e @vars/apps/router9.yml
 ```
+
+### n8n
 
 Default public port is `5178`, mapped to container port `5678`.
 
@@ -289,13 +269,68 @@ and deletes the n8n, Postgres, and Redis named volumes before redeploying.
 If the controller cannot install `passlib[bcrypt]`, pass `n8n_password_hash` instead of
 `n8n_basic_auth_password`.
 
+### openclaw
+
+Published on `18789`. The config directory is a named volume (`openclaw-config`) rather than a host bind mount,
+so the image's own user owns it and there is no uid mismatch on first start.
+
+`openclaw_gateway_token` is generated and persisted on first deploy. Pass it explicitly to pin a known token.
+
+The upstream compose file declares `network_mode: host` together with `ports:` and `networks:`, which Docker
+Compose rejects as mutually exclusive. This role publishes port `18789` on a bridge network instead, which is
+also what a reverse proxy in front of the instance needs. Set `network_mode: host` only if openclaw has to
+discover devices on the VM's LAN, and then drop the port mapping.
+
+`openclaw_domain` / `openclaw_generated_domain` are still required, because the platform hands the customer
+that hostname, but nothing in this repo consumes it yet: openclaw is reached on its published port until a
+reverse-proxy role exists. The same is true for 9router.
+
+openclaw exposes no documented readiness endpoint, so the health gate waits for the published port to accept
+connections rather than polling an invented HTTP path.
+
+### 9router
+
+Published on `20128`, health-gated on `/api/health`.
+
+`router9_initial_password` is required and sets the first-login admin password. `JWT_SECRET` and
+`API_KEY_SECRET` are generated and persisted on first deploy.
+
+The container healthcheck uses `curl`, matching the upstream compose file. If the image does not ship `curl`,
+the container reports unhealthy even while serving; the Ansible-side gate polls from the host and is not
+affected.
+
 ## Adding Another App
 
-1. Create a new role under `roles/apps/<app_name>`.
-2. Put app defaults in `roles/apps/<app_name>/defaults/main.yml`.
-3. Put deployment tasks in `roles/apps/<app_name>/tasks/main.yml`.
-4. Put compose/env templates in `roles/apps/<app_name>/templates`.
-5. Add the app to `supported_apps` in `playbooks/deploy.yml`.
-6. Add an example vars file under `vars/apps/<app_name>.yml.example`.
+`roles/app_common` owns everything that is the same for every app, so a new role only describes what is
+actually different about that app.
 
-The new app automatically reuses `roles/docker_host`.
+1. Create `roles/apps/<app>/defaults/main.yml` setting at least:
+   - `app_prefix` - the variable prefix the customer form and payload use. Must start with a letter.
+   - `app_project_dir` - where the stack lives on the VM.
+   - `app_stack_volumes` - named volumes to delete on a clean install, prefixed with the Compose project name.
+   - `app_log_services` - Compose services whose logs are collected when a deploy fails.
+   - `app_health_mode` plus `app_health_url` (http) or `app_health_port` (port), or `none` to skip the gate.
+2. Create `roles/apps/<app>/tasks/main.yml`. Include `app_common` first to resolve the shared input, then
+   `app_common` with `tasks_from: load_secrets`, render the templates, `tasks_from: save_secrets`, and finish
+   with `tasks_from: deploy`.
+3. Put the compose and env templates in `roles/apps/<app>/templates`. They read the shared facts
+   `app_service_url`, `app_host`, `app_protocol`, `app_secure_cookie`, and `app_timezone_effective`.
+4. Add the app to `supported_apps` in `playbooks/deploy.yml`.
+5. Add the `<prefix>_*` block to `vars/semaphore_env.yml` and an example under `vars/apps/<app>.yml.example`.
+
+Do not add a variable to `roles/app_common/defaults/main.yml` that an app role also sets. `app_common` is
+included from inside the app role, so its defaults load later and would override the app's own value at the
+same precedence level. Shared settings are read with an inline `default()` in the tasks instead.
+
+Every app automatically reuses `roles/docker_host` and the domain, timezone, clean-install, health-gate and
+failure-diagnostics behaviour.
+
+## Generated Secrets
+
+`app_common` persists generated secrets in `<app_project_dir>/.generated-secrets.yml` (mode 0600) and reuses
+them on redeploy, so a rerun does not rotate a token that existing data depends on. A clean install removes the
+stack volumes but keeps that file, so the instance keeps its identity unless you delete it explicitly.
+
+n8n predates this and keeps its generated secrets in `/opt/n8n/.env`; it was left that way deliberately,
+because switching an existing instance to the shared file would regenerate its encryption key and orphan every
+stored credential.

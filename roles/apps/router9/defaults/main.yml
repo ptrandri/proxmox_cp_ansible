@@ -1,0 +1,24 @@
+---
+# 9router. The variable prefix is router9 because an Ansible variable cannot start with a digit,
+# so the marketplace field keys must be router9_* even though the app is called 9router.
+app_prefix: "router9"
+app_project_dir: "/opt/9router"
+
+router9_image: "decolua/9router:latest"
+router9_public_port: 20128
+router9_container_port: 20128
+
+# Initial admin password for the first login. Required.
+router9_initial_password: ""
+
+# Generated and persisted on first deploy unless pinned here.
+router9_jwt_secret: ""
+router9_api_key_secret: ""
+
+app_stack_volumes:
+  - 9router_router9-data
+app_log_services:
+  - 9router
+
+app_health_mode: "http"
+app_health_url: "http://127.0.0.1:{{ router9_public_port }}/api/health"

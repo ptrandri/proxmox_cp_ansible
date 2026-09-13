@@ -1,0 +1,29 @@
+services:
+  9router:
+    container_name: 9router
+    image: "{{ router9_image }}"
+    ports:
+      - "{{ router9_public_port }}:{{ router9_container_port }}"
+    environment:
+      - NODE_ENV=production
+      - TZ=${TIMEZONE}
+      - PORT=${ROUTER9_PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD}
+      - API_KEY_SECRET=${API_KEY_SECRET}
+    volumes:
+      - router9-data:/app/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -f http://127.0.0.1:${ROUTER9_PORT}/api/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  router9-data:

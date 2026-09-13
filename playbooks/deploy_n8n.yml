@@ -1,4 +1,0 @@
----
-# Backward-compatible n8n-only wrapper.
-# deploy.yml defaults app_name to n8n_queue when it is not provided.
-- ansible.builtin.import_playbook: deploy.yml

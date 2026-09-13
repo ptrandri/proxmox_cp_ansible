@@ -1,0 +1,54 @@
+---
+# Shared input resolution for every app role. A role sets app_prefix and app_project_dir, and the
+# customer-facing contract is then identical across apps:
+#
+#   <prefix>_custom_domain     bool    true selects <prefix>_domain, false selects <prefix>_generated_domain
+#   <prefix>_domain            string  customer supplied domain
+#   <prefix>_generated_domain  string  platform generated hostname
+#   <prefix>_timezone          string  defaults to app_timezone_default
+#   <prefix>_clean_install     bool    wipe the stack and its volumes before deploying
+#
+# The marketplace input_schema keys must match these names exactly, so a new app needs no mapping
+# layer anywhere between the customer form and the compose file.
+- name: Validate application role contract
+  ansible.builtin.assert:
+    that:
+      - app_prefix is defined and (app_prefix | string | length) > 0
+      - app_project_dir is defined and (app_project_dir | string | length) > 0
+    fail_msg: "An app role must set app_prefix and app_project_dir before including app_common."
+
+- name: Resolve shared application input
+  ansible.builtin.set_fact:
+    app_custom_domain_effective: "{{ lookup('ansible.builtin.vars', app_prefix ~ '_custom_domain', default=false) | default(false, true) | bool }}"
+    app_custom_domain_input: "{{ lookup('ansible.builtin.vars', app_prefix ~ '_domain', default='') | default('', true) | string | trim }}"
+    app_generated_domain_input: "{{ lookup('ansible.builtin.vars', app_prefix ~ '_generated_domain', default='') | default('', true) | string | trim }}"
+    app_timezone_effective: "{{ lookup('ansible.builtin.vars', app_prefix ~ '_timezone', default='') | default(app_timezone_default, true) | string | trim }}"
+    app_clean_install_effective: "{{ lookup('ansible.builtin.vars', app_prefix ~ '_clean_install', default=false) | default(false, true) | bool }}"
+
+- name: Resolve application domain
+  ansible.builtin.set_fact:
+    app_domain_effective: "{{ app_custom_domain_input if app_custom_domain_effective else app_generated_domain_input }}"
+
+- name: Validate application domain
+  ansible.builtin.assert:
+    that:
+      - (app_domain_effective | length) > 0
+    fail_msg: >-
+      {{ app_prefix }}_custom_domain is {{ app_custom_domain_effective }}, so
+      {{ app_prefix ~ ('_domain' if app_custom_domain_effective else '_generated_domain') }} must be set.
+
+- name: Derive application URL
+  ansible.builtin.set_fact:
+    app_service_url: "{{ app_domain_effective if (app_domain_effective is match('^https?://')) else 'https://' ~ app_domain_effective }}"
+
+- name: Derive application host, protocol and cookie policy
+  ansible.builtin.set_fact:
+    app_host: "{{ app_service_url | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
+    app_protocol: "{{ 'https' if (app_service_url is match('^https://')) else 'http' }}"
+    app_secure_cookie: "{{ app_service_url is match('^https://') }}"
+
+- name: Validate application timezone
+  ansible.builtin.assert:
+    that:
+      - (app_timezone_effective | length) > 0
+    fail_msg: "Set {{ app_prefix }}_timezone, or the matching Semaphore Environment variable."

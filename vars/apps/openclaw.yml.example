@@ -1,0 +1,22 @@
+---
+app_name: "openclaw"
+workload_type: "qemu"
+
+vm_ip: "192.168.50.10"
+vm_user: "ubuntu"
+vm_pass: "CHANGE_ME_SSH_PASSWORD"
+
+openclaw_timezone: "Asia/Jakarta"
+openclaw_clean_install: false
+
+# true  -> openclaw_domain is used
+# false -> openclaw_generated_domain is used
+openclaw_custom_domain: false
+openclaw_domain: ""
+openclaw_generated_domain: "openclaw-71bd257c0d.bataminfra.id"
+
+# Optional. Generated and persisted in /opt/openclaw/.generated-secrets.yml when omitted.
+# openclaw_gateway_token: "long-random-gateway-token"
+
+openclaw_image: "ghcr.io/openclaw/openclaw:latest"
+openclaw_public_port: 18789

@@ -1,8 +1,21 @@
 ---
+app_prefix: "n8n"
 n8n_project_dir: "/opt/n8n"
+app_project_dir: "{{ n8n_project_dir }}"
+
+app_stack_volumes:
+  - n8n_n8n-data
+  - n8n_postgresql-data
+  - n8n_redis-data
+app_log_services:
+  - n8n
+  - postgresql
+
+app_health_mode: "http"
+app_health_url: "http://127.0.0.1:{{ n8n_public_port }}/healthz"
+
 n8n_image: "docker.n8n.io/n8nio/n8n:2.27.4"
 n8n_public_port: 5178
-n8n_timezone_default: "Asia/Jakarta"
 n8n_worker_concurrency: 15
 n8n_owner_first_name: "n8n"
 n8n_owner_last_name: "Admin"

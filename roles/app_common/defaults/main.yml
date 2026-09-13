@@ -1,0 +1,6 @@
+---
+# Only values no app role defines itself. Anything an app role sets in its own defaults must NOT be
+# listed here: app_common is included from inside the app role, so its defaults load later and would
+# override the app's own value at the same precedence level. Those settings are read with an inline
+# default in the tasks instead.
+app_timezone_default: "Asia/Jakarta"

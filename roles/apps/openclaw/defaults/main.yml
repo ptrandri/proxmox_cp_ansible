@@ -1,0 +1,20 @@
+---
+app_prefix: "openclaw"
+app_project_dir: "/opt/openclaw"
+
+openclaw_image: "ghcr.io/openclaw/openclaw:latest"
+openclaw_public_port: 18789
+openclaw_container_port: 18789
+
+# Gateway token is generated and persisted on first deploy. Pass openclaw_gateway_token to pin it.
+openclaw_gateway_token: ""
+
+app_stack_volumes:
+  - openclaw_openclaw-config
+app_log_services:
+  - openclaw
+
+# openclaw exposes no documented readiness endpoint, so the gate is the published port accepting
+# connections rather than an invented HTTP path.
+app_health_mode: "port"
+app_health_port: "{{ openclaw_public_port }}"

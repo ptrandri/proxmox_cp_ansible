@@ -1,61 +1,28 @@
 ---
-- name: Normalize n8n deployment input
+- name: Resolve shared application input
+  ansible.builtin.include_role:
+    name: app_common
+
+- name: Resolve n8n owner account input
   ansible.builtin.set_fact:
-    n8n_custom_domain_effective: "{{ n8n_custom_domain | bool }}"
-    n8n_domain_custom_input: "{{ n8n_domain | default('', true) | string | trim }}"
-    n8n_domain_generated_input: "{{ n8n_generated_domain | default('', true) | string | trim }}"
-    n8n_timezone_effective: "{{ n8n_timezone | default(n8n_timezone_default, true) | string | trim }}"
     n8n_owner_email: "{{ n8n_basic_auth_user | default('', true) | string | trim }}"
     n8n_owner_password_input: "{{ n8n_basic_auth_password | default('', true) | string }}"
-    n8n_clean_install_effective: "{{ n8n_clean_install | bool }}"
   no_log: true
 
-- name: Resolve n8n domain and owner provisioning mode
+- name: Resolve n8n owner provisioning mode
   ansible.builtin.set_fact:
-    n8n_domain_input: "{{ n8n_domain_custom_input if n8n_custom_domain_effective else n8n_domain_generated_input }}"
     n8n_owner_provisioning_effective: "{{ (n8n_owner_email | length > 0) and ((n8n_owner_password_input | length > 0) or (n8n_password_hash | default('') | string | length > 0)) }}"
   no_log: true
 
-- name: Validate n8n domain input
-  ansible.builtin.assert:
-    that:
-      - n8n_domain_input | length > 0
-    fail_msg: >-
-      n8n_custom_domain is {{ n8n_custom_domain_effective }}, so
-      {{ 'n8n_domain' if n8n_custom_domain_effective else 'n8n_generated_domain' }} must be set.
-
-- name: Build n8n public URL from domain
-  ansible.builtin.set_fact:
-    n8n_service_url_effective: >-
-      {{
-        n8n_service_url
-        | default(
-            (
-              n8n_domain_input
-              if (n8n_domain_input is match('^https?://'))
-              else 'https://' ~ n8n_domain_input
-            )
-            if (n8n_domain_input | length > 0)
-            else 'http://' ~ (ansible_host | default(inventory_hostname)),
-            true
-          )
-      }}
-
-- name: Derive n8n host and protocol
-  ansible.builtin.set_fact:
-    n8n_host_effective: "{{ n8n_service_url_effective | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
-    n8n_protocol_effective: "{{ 'https' if (n8n_service_url_effective is match('^https://')) else 'http' }}"
-    n8n_secure_cookie_effective: "{{ n8n_secure_cookie | default(n8n_service_url_effective is match('^https://')) }}"
-
 - name: Check existing n8n environment file
   ansible.builtin.stat:
-    path: "{{ n8n_project_dir }}/.env"
+    path: "{{ app_project_dir }}/.env"
   register: n8n_env_file
   no_log: true
 
 - name: Read existing n8n environment file
   ansible.builtin.slurp:
-    path: "{{ n8n_project_dir }}/.env"
+    path: "{{ app_project_dir }}/.env"
   register: n8n_existing_env
   when: n8n_env_file.stat.exists
   no_log: true
@@ -103,8 +70,7 @@
       - n8n_postgres_password_effective != 'CHANGE_ME_POSTGRES_PASSWORD'
       - n8n_redis_password_effective != 'CHANGE_ME_REDIS_PASSWORD'
       - n8n_encryption_key_effective != 'CHANGE_ME_LONG_RANDOM_ENCRYPTION_KEY'
-      - n8n_timezone_effective | length > 0
-    fail_msg: "Set n8n_timezone (or the N8N_TIMEZONE environment variable) for app_name=n8n_queue."
+    fail_msg: "n8n service secrets could not be resolved. Pass them explicitly or let the role generate them."
 
 - name: Validate n8n owner account input
   ansible.builtin.assert:
@@ -148,13 +114,13 @@
     group: root
     mode: "0755"
   loop:
-    - "{{ n8n_project_dir }}"
-    - "{{ n8n_project_dir }}/local-files"
+    - "{{ app_project_dir }}"
+    - "{{ app_project_dir }}/local-files"
 
 - name: Render n8n Docker Compose file
   ansible.builtin.template:
     src: docker-compose.yml.j2
-    dest: "{{ n8n_project_dir }}/docker-compose.yml"
+    dest: "{{ app_project_dir }}/docker-compose.yml"
     owner: root
     group: root
     mode: "0644"
@@ -162,114 +128,13 @@
 - name: Render n8n environment file
   ansible.builtin.template:
     src: n8n.env.j2
-    dest: "{{ n8n_project_dir }}/.env"
+    dest: "{{ app_project_dir }}/.env"
     owner: root
     group: root
     mode: "0600"
   no_log: true
 
-- name: Check existing n8n Compose file
-  ansible.builtin.stat:
-    path: "{{ n8n_project_dir }}/docker-compose.yml"
-  register: n8n_compose_file
-
-- name: Clean existing n8n stack and volumes
-  when:
-    - n8n_clean_install_effective | bool
-    - n8n_compose_file.stat.exists
-  block:
-    - name: Stop n8n stack and remove project volumes
-      community.docker.docker_compose_v2:
-        project_src: "{{ n8n_project_dir }}"
-        state: absent
-        remove_volumes: true
-        remove_orphans: true
-      failed_when: false
-
-    - name: Remove n8n named volumes defensively
-      community.docker.docker_volume:
-        name: "{{ item }}"
-        state: absent
-      loop:
-        - n8n_n8n-data
-        - n8n_postgresql-data
-        - n8n_redis-data
-      failed_when: false
-
-- name: Deploy n8n stack
-  block:
-    - name: Deploy n8n stack with Docker Compose
-      community.docker.docker_compose_v2:
-        project_src: "{{ n8n_project_dir }}"
-        state: present
-        pull: always
-        remove_orphans: true
-
-    - name: Wait for n8n master HTTP health endpoint
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ n8n_public_port }}/healthz"
-        status_code: 200
-        return_content: false
-      register: n8n_health_check
-      retries: 24
-      delay: 5
-      until: n8n_health_check.status == 200
-
-  rescue:
-    - name: Read rendered n8n Docker Compose file after failure
-      ansible.builtin.command:
-        cmd: cat docker-compose.yml
-        chdir: "{{ n8n_project_dir }}"
-      register: n8n_rendered_compose
-      changed_when: false
-      failed_when: false
-
-    - name: Collect n8n compose status after failure
-      ansible.builtin.command:
-        cmd: docker compose ps
-        chdir: "{{ n8n_project_dir }}"
-      register: n8n_compose_ps
-      changed_when: false
-      failed_when: false
-
-    - name: Collect n8n master logs after failure
-      ansible.builtin.command:
-        cmd: docker compose logs --no-color --tail=120 n8n
-        chdir: "{{ n8n_project_dir }}"
-      register: n8n_master_logs
-      changed_when: false
-      failed_when: false
-
-    - name: Collect n8n database logs after failure
-      ansible.builtin.command:
-        cmd: docker compose logs --no-color --tail=80 postgresql
-        chdir: "{{ n8n_project_dir }}"
-      register: n8n_postgres_logs
-      changed_when: false
-      failed_when: false
-
-    - name: Show n8n diagnostics
-      ansible.builtin.debug:
-        msg:
-          - "rendered docker-compose.yml:"
-          - "{{ n8n_rendered_compose.stdout_lines | default([]) }}"
-          - "docker compose ps:"
-          - "{{ n8n_compose_ps.stdout_lines | default([]) }}"
-          - "n8n logs:"
-          - "{{ n8n_master_logs.stdout_lines | default([]) }}"
-          - "postgresql logs:"
-          - "{{ n8n_postgres_logs.stdout_lines | default([]) }}"
-
-    - name: Fail n8n deployment with diagnostics
-      ansible.builtin.fail:
-        msg: |-
-          n8n stack did not become healthy.
-
-          docker compose ps:
-          {{ n8n_compose_ps.stdout | default('') }}
-
-          n8n logs:
-          {{ n8n_master_logs.stdout | default('') }}
-
-          postgresql logs:
-          {{ n8n_postgres_logs.stdout | default('') }}
+- name: Persist n8n deployment
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: deploy

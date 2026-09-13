@@ -1,6 +1,4 @@
 *.retry
-inventories/production/hosts.ini
-inventories/production/hosts.yml
 vars/n8n.yml
 vars/apps/*.yml
 

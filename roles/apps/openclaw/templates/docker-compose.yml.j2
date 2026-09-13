@@ -1,0 +1,25 @@
+services:
+  openclaw:
+    container_name: openclaw
+    hostname: openclaw
+    image: "{{ openclaw_image }}"
+    ports:
+      - "{{ openclaw_public_port }}:{{ openclaw_container_port }}"
+    environment:
+      - NODE_ENV=production
+      - TZ=${TIMEZONE}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+    volumes:
+      - openclaw-config:/home/node/.openclaw
+    networks:
+      - openclaw_net
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  openclaw_net:
+    driver: bridge
+
+volumes:
+  openclaw-config:

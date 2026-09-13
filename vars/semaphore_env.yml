@@ -22,7 +22,8 @@ vm_ssh_private_key_file: "{{ lookup('env', 'VM_SSH_PRIVATE_KEY_FILE') | default(
 workload_type: "{{ lookup('env', 'WORKLOAD_TYPE') | default('qemu', true) }}"
 
 # Application selection
-app_name: "{{ lookup('env', 'APP_NAME') | default('n8n_queue', true) }}"
+# No default: a missing app_name must fail, not install n8n by accident.
+app_name: "{{ lookup('env', 'APP_NAME') | default('', true) }}"
 
 # n8n
 n8n_timezone: "{{ lookup('env', 'N8N_TIMEZONE') | default('Asia/Jakarta', true) }}"
@@ -36,3 +37,23 @@ n8n_public_port: "{{ lookup('env', 'N8N_PUBLIC_PORT') | default('5178', true) | 
 n8n_image: "{{ lookup('env', 'N8N_IMAGE') | default('docker.n8n.io/n8nio/n8n:2.27.4', true) }}"
 n8n_worker_concurrency: "{{ lookup('env', 'N8N_WORKER_CONCURRENCY') | default('15', true) | int }}"
 n8n_owner_email_strict: "{{ lookup('env', 'N8N_OWNER_EMAIL_STRICT') | default('true', true) | bool }}"
+
+# openclaw
+openclaw_timezone: "{{ lookup('env', 'OPENCLAW_TIMEZONE') | default('Asia/Jakarta', true) }}"
+openclaw_clean_install: "{{ lookup('env', 'OPENCLAW_CLEAN_INSTALL') | default('false', true) | bool }}"
+openclaw_custom_domain: "{{ lookup('env', 'OPENCLAW_CUSTOM_DOMAIN') | default('false', true) | bool }}"
+openclaw_domain: "{{ lookup('env', 'OPENCLAW_DOMAIN') | default('', true) }}"
+openclaw_generated_domain: "{{ lookup('env', 'OPENCLAW_GENERATED_DOMAIN') | default('', true) }}"
+openclaw_gateway_token: "{{ lookup('env', 'OPENCLAW_GATEWAY_TOKEN') | default('', true) }}"
+openclaw_public_port: "{{ lookup('env', 'OPENCLAW_PUBLIC_PORT') | default('18789', true) | int }}"
+openclaw_image: "{{ lookup('env', 'OPENCLAW_IMAGE') | default('ghcr.io/openclaw/openclaw:latest', true) }}"
+
+# 9router (variables are router9_* because an Ansible variable cannot start with a digit)
+router9_timezone: "{{ lookup('env', 'ROUTER9_TIMEZONE') | default('Asia/Jakarta', true) }}"
+router9_clean_install: "{{ lookup('env', 'ROUTER9_CLEAN_INSTALL') | default('false', true) | bool }}"
+router9_custom_domain: "{{ lookup('env', 'ROUTER9_CUSTOM_DOMAIN') | default('false', true) | bool }}"
+router9_domain: "{{ lookup('env', 'ROUTER9_DOMAIN') | default('', true) }}"
+router9_generated_domain: "{{ lookup('env', 'ROUTER9_GENERATED_DOMAIN') | default('', true) }}"
+router9_initial_password: "{{ lookup('env', 'ROUTER9_INITIAL_PASSWORD') | default('', true) }}"
+router9_public_port: "{{ lookup('env', 'ROUTER9_PUBLIC_PORT') | default('20128', true) | int }}"
+router9_image: "{{ lookup('env', 'ROUTER9_IMAGE') | default('decolua/9router:latest', true) }}"

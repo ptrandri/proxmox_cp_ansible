@@ -5,7 +5,6 @@ services:
     ports:
       - "{{ n8n_public_port }}:5678"
     environment:
-      - SERVICE_URL_N8N_5678
       - N8N_EDITOR_BASE_URL=${SERVICE_URL_N8N}
       - WEBHOOK_URL=${SERVICE_URL_N8N}
       - N8N_HOST=${N8N_DOMAIN}

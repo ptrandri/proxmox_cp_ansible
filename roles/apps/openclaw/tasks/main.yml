@@ -1,0 +1,60 @@
+---
+- name: Resolve shared application input
+  ansible.builtin.include_role:
+    name: app_common
+
+- name: Load stored generated secrets
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: load_secrets
+
+- name: Generate a gateway token candidate
+  ansible.builtin.set_fact:
+    openclaw_generated_gateway_token: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=48) }}"
+  no_log: true
+
+- name: Resolve openclaw secrets
+  ansible.builtin.set_fact:
+    app_generated_secrets:
+      OPENCLAW_GATEWAY_TOKEN: >-
+        {{
+          openclaw_gateway_token
+          | default(app_stored_secrets.OPENCLAW_GATEWAY_TOKEN | default(''), true)
+          | default(openclaw_generated_gateway_token, true)
+        }}
+  no_log: true
+
+- name: Create openclaw project directory
+  ansible.builtin.file:
+    path: "{{ app_project_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render openclaw Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ app_project_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render openclaw environment file
+  ansible.builtin.template:
+    src: openclaw.env.j2
+    dest: "{{ app_project_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Persist generated secrets
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: save_secrets
+
+- name: Deploy openclaw stack
+  ansible.builtin.include_role:
+    name: app_common
+    tasks_from: deploy

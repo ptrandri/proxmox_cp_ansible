@@ -1,0 +1,102 @@
+---
+# Shared deploy, health gate and failure diagnostics. A role sets app_stack_volumes, app_log_services
+# and the app_health_* variables, then includes this file after rendering its templates.
+- name: Check existing Compose file
+  ansible.builtin.stat:
+    path: "{{ app_project_dir }}/docker-compose.yml"
+  register: app_compose_file
+
+- name: Clean existing stack and volumes
+  when:
+    - app_clean_install_effective | bool
+    - app_compose_file.stat.exists
+  block:
+    - name: Stop stack and remove project volumes
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_project_dir }}"
+        state: absent
+        remove_volumes: true
+        remove_orphans: true
+      failed_when: false
+
+    - name: Remove named volumes defensively
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ app_stack_volumes | default([]) }}"
+      failed_when: false
+
+- name: Deploy stack
+  block:
+    - name: Deploy with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_project_dir }}"
+        state: present
+        pull: always
+        remove_orphans: true
+
+    - name: Wait for HTTP health endpoint
+      ansible.builtin.uri:
+        url: "{{ app_health_url }}"
+        status_code: "{{ app_health_status | default(200) | int }}"
+        return_content: false
+      register: app_health_check
+      retries: "{{ app_health_retries | default(24) | int }}"
+      delay: "{{ app_health_delay | default(5) | int }}"
+      until: app_health_check.status == (app_health_status | default(200) | int)
+      when: (app_health_mode | default('http')) == 'http'
+
+    - name: Wait for published port to accept connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ app_health_port | int }}"
+        state: started
+        timeout: "{{ (app_health_retries | default(24) | int) * (app_health_delay | default(5) | int) }}"
+      when: (app_health_mode | default('http')) == 'port'
+
+  rescue:
+    - name: Read rendered Compose file after failure
+      ansible.builtin.command:
+        cmd: cat docker-compose.yml
+        chdir: "{{ app_project_dir }}"
+      register: app_rendered_compose
+      changed_when: false
+      failed_when: false
+
+    - name: Collect compose status after failure
+      ansible.builtin.command:
+        cmd: docker compose ps
+        chdir: "{{ app_project_dir }}"
+      register: app_compose_ps
+      changed_when: false
+      failed_when: false
+
+    - name: Collect service logs after failure
+      ansible.builtin.command:
+        cmd: "docker compose logs --no-color --tail={{ app_log_tail | default(120) }} {{ item }}"
+        chdir: "{{ app_project_dir }}"
+      register: app_service_logs
+      loop: "{{ app_log_services | default([]) }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Show diagnostics
+      ansible.builtin.debug:
+        msg:
+          - "rendered docker-compose.yml:"
+          - "{{ app_rendered_compose.stdout_lines | default([]) }}"
+          - "docker compose ps:"
+          - "{{ app_compose_ps.stdout_lines | default([]) }}"
+          - "service logs:"
+          - "{{ app_service_logs.results | default([]) | map(attribute='stdout_lines') | list }}"
+
+    - name: Fail deployment with diagnostics
+      ansible.builtin.fail:
+        msg: |-
+          The {{ app_prefix }} stack did not become healthy.
+
+          docker compose ps:
+          {{ app_compose_ps.stdout | default('') }}
+
+          service logs:
+          {{ app_service_logs.results | default([]) | map(attribute='stdout') | join("\n\n") }}
